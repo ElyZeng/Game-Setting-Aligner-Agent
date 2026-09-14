@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "manifest_version": "verification-rules-v1.2.2",
-  "published_at": "2026-09-14T10:15:48.216478+00:00",
+  "published_at": "2026-09-14T10:23:14.670712+00:00",
   "generator_version": "manage_verification.py",
   "minimum_client_version": "0.07.8",
   "games": [
@@ -38,7 +38,7 @@
     {
       "game": "F1 25",
       "platform": "Steam",
-      "version": "unknown",
+      "version": "1,0,141,2878",
       "fingerprint": "e85374275148a8bb3b658061ae82fad6401f9e91437fe3ae80d8bd9c547f40f4",
       "status": "write_candidate",
       "config_patterns": [
