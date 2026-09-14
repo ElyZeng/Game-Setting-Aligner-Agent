@@ -430,6 +430,7 @@ class App:
         self.root.minsize(800, 500)
 
         self._game_rows: List[GameRow] = []
+        self._detected_games: List[Any] = []
         self._wiki_client = PCGamingWikiClient()
         self._package = ConfigPackage()
         self._verification_registry = VerificationRegistry(__version__)
@@ -472,6 +473,11 @@ class App:
             top_bar, text="Check Rules", width=105, command=self._offer_rule_update,
         )
         self._rules_btn.pack(side="right", padx=4, pady=10)
+
+        self._wiki_btn = ctk.CTkButton(
+            top_bar, text="Wiki Data", width=105, command=self._retry_wiki_download,
+        )
+        self._wiki_btn.pack(side="right", padx=4, pady=10)
 
         # Status label
         self._status_label = ctk.CTkLabel(
@@ -645,6 +651,7 @@ class App:
         self.root.after(0, self._on_scan_done, games)
 
     def _on_scan_done(self, games: List[Any]) -> None:
+        self._detected_games = list(games)
         # Clear old rows
         for row in self._game_rows:
             row._outer_frame.destroy()
@@ -673,6 +680,7 @@ class App:
 
         # Phase 2: background Wiki query + local config detection
         if games:
+            self._offer_wiki_download(games)
             self._start_config_detection(list(games))
 
         self.root.after(500, self._offer_rule_update)
@@ -783,6 +791,57 @@ class App:
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
+
+    def _wiki_download_candidates(self, games: List[Any], retry: bool = False) -> List[Any]:
+        candidates = []
+        seen = set()
+        for game in games:
+            game_name = getattr(game, "name", str(game))
+            normalized = game_name.casefold().strip()
+            if normalized in seen:
+                continue
+            state = self._wiki_client.download_state(game_name)
+            if state == "no_decision" or (retry and state != "cached"):
+                candidates.append(game)
+                seen.add(normalized)
+        return candidates
+
+    def _offer_wiki_download(self, games: List[Any], retry: bool = False) -> Optional[bool]:
+        """Ask once before downloading Wiki data for uncached detected games."""
+        candidates = self._wiki_download_candidates(games, retry=retry)
+        if not candidates:
+            return None
+
+        count = len(candidates)
+        accepted = messagebox.askyesno(
+            "PCGamingWiki Data",
+            f"Download PCGamingWiki configuration data for {count} detected game(s)?\n\n"
+            "This data helps locate local game settings. Choosing No keeps scanning "
+            "offline, and you can retry later with the Wiki Data button.",
+        )
+        decision = "accepted" if accepted else "declined"
+        try:
+            for game in candidates:
+                game_name = getattr(game, "name", str(game))
+                self._wiki_client.set_download_decision(game_name, decision)
+        except OSError as exc:
+            messagebox.showerror(
+                "PCGamingWiki Data",
+                f"Could not save the download decision:\n{exc}",
+            )
+            return False
+        return accepted
+
+    def _retry_wiki_download(self) -> None:
+        candidates = self._wiki_download_candidates(self._detected_games, retry=True)
+        if not candidates:
+            messagebox.showinfo(
+                "PCGamingWiki Data",
+                "All detected games already have cached PCGamingWiki data.",
+            )
+            return
+        if self._offer_wiki_download(candidates, retry=True):
+            self._start_config_detection(candidates)
 
     def _select_all(self) -> None:
         for row in self._game_rows:
