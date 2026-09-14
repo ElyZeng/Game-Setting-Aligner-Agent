@@ -252,6 +252,132 @@ class TestF1Parser:
         assert result["dynamic_resolution"] == "Off"
         assert result["quick_preset"] == "N/A"
 
+    def test_parse_xess_balanced_quality(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <antialiasing taa="false" cas="1" dlss="false" fsr3="0" xess="true" />
+    <aa_quality value="1" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["upscaling"] == "XeSS (Balanced)"
+
+    def test_parse_xess_quality(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <antialiasing taa="false" cas="1" dlss="false" fsr3="0" xess="true" />
+  <aa_quality value="0" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["upscaling"] == "XeSS (Quality)"
+
+    def test_parse_xess_performance_quality(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <antialiasing taa="false" cas="1" dlss="false" fsr3="0" xess="true" />
+  <aa_quality value="2" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["upscaling"] == "XeSS (Performance)"
+
+    def test_parse_xess_ultra_quality(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <antialiasing taa="false" cas="1" dlss="false" fsr3="0" xess="true" />
+  <aa_quality value="4" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["upscaling"] == "XeSS (Ultra Quality)"
+
+    def test_parse_fsr3_ultra_performance(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <antialiasing taa="false" cas="1" dlss="false" fsr3="1" xess="false" />
+  <aa_quality value="3" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR3 (Ultra Performance)"
+
+    def test_parse_fsr3_performance(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <antialiasing taa="false" cas="1" dlss="false" fsr3="1" xess="false" />
+  <aa_quality value="2" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR3 (Performance)"
+
+    def test_parse_fsr3_balanced(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <antialiasing taa="false" cas="1" dlss="false" fsr3="1" xess="false" />
+  <aa_quality value="1" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR3 (Balanced)"
+
+    def test_dynamic_resolution_preserves_auto_target(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <dynamicresolution_enabled value="true" />
+  <dynamicresolution_target_fps value="AUTO" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["dynamic_resolution"] == "On (Target: AUTO)"
+
+    def test_dynamic_resolution_zero_target_maps_to_auto(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <dynamicresolution_enabled value="true" />
+  <dynamicresolution_target_fps value="0" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["dynamic_resolution"] == "On (Target: AUTO)"
+
 
 class TestForzaPresetInference:
     def test_forza_horizon_6_screen_mode_uses_game_full_screen_semantics(self):
@@ -497,22 +623,88 @@ class TestForzaWriter:
         assert '<Fullscreen value="1" />' in result
 
 
-        class TestF1PresetInference:
-            def test_mixed_quality_components_are_custom(self):
-                from config_manager.settings_parser import extract_key_settings
 
-                content = """<hardware_settings_config>
-          <lighting quality="3" />
-          <ssrt quality="4" />
-          <shadows sampling="3" />
-          <weather_effects proceduralCloudQuality="1" />
-        </hardware_settings_config>"""
-                result = extract_key_settings(
-                    "F1 25",
-                    [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
-                )
+class TestF1PresetInference:
+    @pytest.mark.parametrize(
+        ("name", "content"),
+        [
+            (
+                "Ultra Low",
+                '<ssrt quality="0"/><lighting quality="0"/><shadows sampling="1" skyShadowMapSize="512"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="256"/><particles enabled="false"/><vehicle_reflections envMapScale="0.25"/><ground_cover enabled="false"/>',
+            ),
+            (
+                "Low",
+                '<ssrt quality="0"/><lighting quality="0"/><shadows sampling="1" skyShadowMapSize="1024"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="512"/><particles enabled="true" distanceScale="3.0"/><vehicle_reflections envMapScale="0.5"/>',
+            ),
+            (
+                "Medium",
+                '<ssrt quality="2"/><lighting quality="1"/><shadows sampling="1"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="1024"/><particles enabled="true" distanceScale="1.0"/><vehicle_reflections envMapScale="1.0"/><ground_cover enabled="true"/>',
+            ),
+        ],
+    )
+    def test_base_preset_signatures_are_recognized(self, name, content):
+        from config_manager.settings_parser import extract_key_settings
 
-                assert result["quick_preset"] == "Custom"
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": f"<hardware_settings_config>{content}</hardware_settings_config>", "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["quick_preset"] == name
+
+    def test_high_signature_is_recognized(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <ssrt quality="3" />
+  <lighting quality="2" />
+  <shadows sampling="2" />
+    <weather_effects proceduralCloudQuality="1" />
+    <texture_streaming sizeInMiB="1536" />
+    <rt_pathtrace enabled="false" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["quick_preset"] == "High"
+
+    def test_ultra_high_signature_is_recognized(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <lighting quality="3" />
+  <ssrt quality="4" />
+  <shadows sampling="3" />
+    <weather_effects proceduralCloudQuality="1" />
+    <texture_streaming sizeInMiB="2048" />
+    <rt_pathtrace enabled="false" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["quick_preset"] == "Ultra High"
+
+    def test_ultra_max_signature_is_recognized(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <lighting quality="3" />
+  <ssrt quality="4" />
+  <shadows sampling="3" />
+  <weather_effects proceduralCloudQuality="1" />
+  <texture_streaming sizeInMiB="2048" />
+  <rt_pathtrace enabled="true" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["quick_preset"] == "Ultra Max"
 
 
 class TestGameSpecificUnrealParsers:

@@ -141,6 +141,66 @@ FORZA_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
     "Extreme": {"CarLOD": "4", "EnvStreamingTex": "4", "GeometryQuality": "5", "ReflectionQuality": "4", "SSRQuality": "5", "RTReflectionQuality": "0", "ShadowQuality": "4", "NightShadows": "2", "SSGIQuality": "2", "RTGIQuality": "0", "ShaderQuality": "4", "AudioQuality": "4", "DeformableSnowQuality": "4", "ParticlesSettings": "4", "VolumetricFogQuality": "5", "LensEffects": "4", "MotionBlurQuality": "3"},
 }
 
+F1_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
+    "Ultra Low": {
+        "ssrt.quality": "0",
+        "lighting.quality": "0",
+        "shadows.sampling": "1",
+        "weather_effects.proceduralCloudQuality": "1",
+        "texture_streaming.sizeInMiB": "256",
+        "particles.enabled": "false",
+        "shadows.skyShadowMapSize": "512",
+        "vehicle_reflections.envMapScale": "0.25",
+        "ground_cover.enabled": "false",
+    },
+    "Low": {
+        "ssrt.quality": "0",
+        "lighting.quality": "0",
+        "shadows.sampling": "1",
+        "weather_effects.proceduralCloudQuality": "1",
+        "texture_streaming.sizeInMiB": "512",
+        "particles.enabled": "true",
+        "particles.distanceScale": "3.0",
+        "shadows.skyShadowMapSize": "1024",
+        "vehicle_reflections.envMapScale": "0.5",
+    },
+    "Medium": {
+        "ssrt.quality": "2",
+        "lighting.quality": "1",
+        "shadows.sampling": "1",
+        "weather_effects.proceduralCloudQuality": "1",
+        "texture_streaming.sizeInMiB": "1024",
+        "particles.enabled": "true",
+        "particles.distanceScale": "1.0",
+        "vehicle_reflections.envMapScale": "1.0",
+        "ground_cover.enabled": "true",
+    },
+    "High": {
+        "ssrt.quality": "3",
+        "lighting.quality": "2",
+        "shadows.sampling": "2",
+        "weather_effects.proceduralCloudQuality": "1",
+        "texture_streaming.sizeInMiB": "1536",
+        "rt_pathtrace.enabled": "false",
+    },
+    "Ultra High": {
+        "lighting.quality": "3",
+        "ssrt.quality": "4",
+        "shadows.sampling": "3",
+        "weather_effects.proceduralCloudQuality": "1",
+        "texture_streaming.sizeInMiB": "2048",
+        "rt_pathtrace.enabled": "false",
+    },
+    "Ultra Max": {
+        "lighting.quality": "3",
+        "ssrt.quality": "4",
+        "shadows.sampling": "3",
+        "weather_effects.proceduralCloudQuality": "1",
+        "texture_streaming.sizeInMiB": "2048",
+        "rt_pathtrace.enabled": "true",
+    },
+}
+
 
 def setting_options_for_game(game_name: str, key: str) -> List[str]:
     if "forza horizon 6" in game_name.casefold() and key in FORZA_SETTING_OPTIONS:
@@ -656,12 +716,28 @@ def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
         dlss = anti_aliasing.get("dlss", "false").lower() in {"true", "1", "yes"}
         fsr3 = anti_aliasing.get("fsr3", "0")
         xess = anti_aliasing.get("xess", "false").lower() in {"true", "1", "yes"}
+        aa_quality = find_node("aa_quality")
+        quality_value = aa_quality.get("value", "") if aa_quality is not None else ""
+        quality_names = {
+            "0": "Quality",
+            "1": "Balanced",
+            "2": "Performance",
+            "4": "Ultra Quality",
+        }
+        fsr_quality_names = {
+            "0": "Quality",
+            "1": "Balanced",
+            "2": "Performance",
+            "3": "Ultra Performance",
+        }
         if dlss:
             r[UPSCALING] = "DLSS"
         elif fsr3 not in {"0", "", "false", "off"}:
-            r[UPSCALING] = f"FSR3 ({fsr3})"
+            quality = fsr_quality_names.get(str(quality_value))
+            r[UPSCALING] = f"FSR3 ({quality})" if quality else f"FSR3 ({fsr3})"
         elif xess:
-            r[UPSCALING] = "XeSS"
+            quality = quality_names.get(str(quality_value))
+            r[UPSCALING] = f"XeSS ({quality})" if quality else "XeSS"
         else:
             r[UPSCALING] = "Off"
 
@@ -676,21 +752,50 @@ def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
         enabled = dynamic.get("value", "false").lower() in {"true", "1", "yes"}
         target = find_node("dynamicresolution_target_fps")
         target_value = target.get("value", "") if target is not None else ""
-        r[DYNAMIC_RESOLUTION] = f"On (Target: {target_value} FPS)" if enabled and target_value else ("On" if enabled else "Off")
+        if enabled and target_value:
+            target_label = (
+                "AUTO"
+                if str(target_value).upper() in {"0", "AUTO"}
+                else f"{target_value} FPS"
+            )
+            r[DYNAMIC_RESOLUTION] = f"On (Target: {target_label})"
+        else:
+            r[DYNAMIC_RESOLUTION] = "On" if enabled else "Off"
 
-    # F1 25 has no single overall preset. Infer one from the quality-bearing
-    # component values when possible; mixed component levels are Custom.
+    # F1 25 presets are component signatures; match proven signatures before
+    # treating mixed component levels as Custom.
     quality_values = []
+    quality_options: Dict[str, str] = {}
     for node_name, attribute in (
         ("lighting", "quality"),
         ("ssrt", "quality"),
         ("shadows", "sampling"),
         ("weather_effects", "proceduralCloudQuality"),
+        ("texture_streaming", "sizeInMiB"),
+        ("particles", "enabled"),
+        ("particles", "distanceScale"),
+        ("shadows", "skyShadowMapSize"),
+        ("vehicle_reflections", "envMapScale"),
+        ("ground_cover", "enabled"),
+        ("rt_pathtrace", "enabled"),
     ):
         node = find_node(node_name)
         if node is not None and node.get(attribute) is not None:
-            quality_values.append(node.get(attribute))
-    if len(set(quality_values)) > 1:
+            value = node.get(attribute)
+            if value.lower() in {"true", "false"}:
+                value = value.lower()
+            quality_values.append(value)
+            quality_options[f"{node_name}.{attribute}"] = value
+    preset_name = next(
+        (
+            name for name, signature in F1_PRESET_SIGNATURES.items()
+            if all(quality_options.get(key) == value for key, value in signature.items())
+        ),
+        None,
+    )
+    if preset_name:
+        r[QUICK_PRESET] = preset_name
+    elif len(set(quality_values)) > 1:
         r[QUICK_PRESET] = "Custom"
     elif quality_values:
         r[QUICK_PRESET] = f"Preset Level {quality_values[0]}"

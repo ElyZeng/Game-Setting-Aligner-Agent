@@ -342,6 +342,62 @@ def _write_forza_xml(
     return result
 
 
+def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
+    """Patch F1 25 hardware settings XML without changing unrelated nodes."""
+    result = content
+
+    resolution = settings.get(RESOLUTION)
+    if resolution and "x" in resolution:
+        width, height = resolution.split("x", 1)
+        result = _replace_xml_attr(result, "resolution", "width", width.strip())
+        result = _replace_xml_attr(result, "resolution", "height", height.strip())
+
+    screen_mode = settings.get(SCREEN_MODE)
+    if screen_mode is not None:
+        mode_map = {"Windowed": "0", "Fullscreen": "1", "Borderless Windowed": "2"}
+        if screen_mode in mode_map:
+            result = _replace_xml_attr(result, "resolution", "displayMode", mode_map[screen_mode])
+
+    vsync = settings.get(VSYNC)
+    if vsync is not None:
+        result = _replace_xml_attr(result, "resolution", "vsync", "true" if vsync == "On" else "false")
+
+    frame_limit = settings.get(FRAME_LIMIT)
+    if frame_limit is not None:
+        if frame_limit == "Unlimited":
+            result = _replace_xml_attr(result, "resolution", "frameRateLimiterEnabled", "false")
+        else:
+            try:
+                fps = int(frame_limit.replace(" FPS", ""))
+            except ValueError:
+                fps = None
+            if fps is not None:
+                result = _replace_xml_attr(result, "resolution", "frameRateLimiterEnabled", "true")
+                result = _replace_xml_attr(result, "resolution", "frameRateLimiterValue", str(fps))
+
+    upscaling = settings.get(UPSCALING)
+    if upscaling is not None:
+        quality = upscaling.rsplit("(", 1)[-1].rstrip(") ") if "(" in upscaling else ""
+        quality_map = {"Quality": "0", "Balanced": "1", "Performance": "2", "Ultra Quality": "4", "Ultra Performance": "3"}
+        quality_value = quality_map.get(quality)
+        if "FSR" in upscaling:
+            result = _replace_xml_attr(result, "antialiasing", "dlss", "false")
+            result = _replace_xml_attr(result, "antialiasing", "fsr3", "1")
+            result = _replace_xml_attr(result, "antialiasing", "xess", "false")
+        elif "XeSS" in upscaling:
+            result = _replace_xml_attr(result, "antialiasing", "dlss", "false")
+            result = _replace_xml_attr(result, "antialiasing", "fsr3", "0")
+            result = _replace_xml_attr(result, "antialiasing", "xess", "true")
+        elif upscaling == "Off":
+            result = _replace_xml_attr(result, "antialiasing", "dlss", "false")
+            result = _replace_xml_attr(result, "antialiasing", "fsr3", "0")
+            result = _replace_xml_attr(result, "antialiasing", "xess", "false")
+        if quality_value is not None:
+            result = _replace_xml_attr(result, "aa_quality", "value", quality_value)
+
+    return result
+
+
 # ── Registry JSON Writer ────────────────────────────────────────────
 
 def _write_registry_json(
@@ -472,6 +528,8 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
         return "cs2"
     if "forza" in name_lower:
         return "forza_xml"
+    if "f1 25" in name_lower:
+        return "f1_xml"
 
     readable = [c for c in config_files if c.get("content") and c.get("found")]
 
@@ -582,6 +640,20 @@ def write_settings(
                 except Exception as e:
                     results.append({"path": path, "status": "error", "detail": str(e)})
                 break
+
+    elif parser_type == "f1_xml":
+        for cfg in readable:
+            path = cfg["expanded_path"]
+            if path.endswith(".xml") or "hardware_settings_config" in path:
+                try:
+                    new_content = _write_f1_xml(cfg["content"], to_write)
+                    _safe_write(path, new_content)
+                    results.append({"path": path, "status": "ok", "detail": "F1 25 XML settings written"})
+                except Exception as e:
+                    results.append({"path": path, "status": "error", "detail": str(e)})
+                break
+        else:
+            results.append({"path": "", "status": "skipped", "detail": "No F1 hardware settings XML found"})
 
     elif parser_type == "registry_json":
         for cfg in readable:
