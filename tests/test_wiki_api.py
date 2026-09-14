@@ -55,6 +55,96 @@ class TestPCGamingWikiClient:
         assert isinstance(result, list)
 
 
+class TestPCGamingWikiPersistence:
+    def test_no_decision_stays_offline(self, tmp_path, monkeypatch):
+        client = PCGamingWikiClient(
+            cache_path=str(tmp_path / "wiki-cache.json"),
+            consent_path=str(tmp_path / "wiki-consent.json"),
+        )
+        calls = []
+        monkeypatch.setattr(
+            client,
+            "_query_cargo_raw",
+            lambda *args, **kwargs: calls.append(args) or (["raw"], ["expanded"]),
+        )
+
+        result = client.get_config_info("New Game", allow_download=False)
+
+        assert result["raw_paths"] == []
+        assert result["error"] == "download_consent_required"
+        assert calls == []
+        assert client.download_state("New Game") == "no_decision"
+
+    def test_successful_download_persists_cache_and_consent(self, tmp_path, monkeypatch):
+        cache_path = tmp_path / "wiki-cache.json"
+        consent_path = tmp_path / "wiki-consent.json"
+        client = PCGamingWikiClient(
+            cache_path=str(cache_path), consent_path=str(consent_path)
+        )
+        monkeypatch.setattr(
+            client,
+            "_query_cargo_raw",
+            lambda *args, **kwargs: ([r"{{P|documents}}\Game"], ["expanded"]),
+        )
+
+        client.set_download_decision("New Game", "accepted")
+        result = client.get_config_info("New Game", allow_download=False)
+
+        assert result["raw_paths"] == [r"{{P|documents}}\Game"]
+        restarted = PCGamingWikiClient(
+            cache_path=str(cache_path), consent_path=str(consent_path)
+        )
+        assert restarted.download_state("New Game") == "cached"
+        assert restarted.get_config_info("New Game", allow_download=False)["raw_paths"] == [
+            r"{{P|documents}}\Game"
+        ]
+
+    def test_declined_download_survives_restart(self, tmp_path):
+        cache_path = tmp_path / "wiki-cache.json"
+        consent_path = tmp_path / "wiki-consent.json"
+        client = PCGamingWikiClient(
+            cache_path=str(cache_path), consent_path=str(consent_path)
+        )
+
+        client.set_download_decision("Declined Game", "declined")
+
+        restarted = PCGamingWikiClient(
+            cache_path=str(cache_path), consent_path=str(consent_path)
+        )
+        assert restarted.download_state("Declined Game") == "declined"
+        result = restarted.get_config_info("Declined Game", allow_download=False)
+        assert result["error"] == "download_declined"
+
+    def test_failed_download_does_not_create_cache(self, tmp_path, monkeypatch):
+        client = PCGamingWikiClient(
+            cache_path=str(tmp_path / "wiki-cache.json"),
+            consent_path=str(tmp_path / "wiki-consent.json"),
+        )
+        client.set_download_decision("Missing Game", "accepted")
+        monkeypatch.setattr(client, "_query_cargo_raw", lambda *args, **kwargs: ([], []))
+        monkeypatch.setattr(client, "_query_mediawiki_raw", lambda *args, **kwargs: ([], []))
+        monkeypatch.setattr(client, "_scrape_wiki_page_raw", lambda *args, **kwargs: ([], []))
+        monkeypatch.setattr(client, "search_game", lambda *args, **kwargs: None)
+
+        result = client.get_config_info("Missing Game", allow_download=False)
+
+        assert result["raw_paths"] == []
+        assert client.download_state("Missing Game") == "needs_update"
+        assert not (tmp_path / "wiki-cache.json").exists()
+
+    def test_corrupt_persistence_files_degrade_to_no_decision(self, tmp_path):
+        cache_path = tmp_path / "wiki-cache.json"
+        consent_path = tmp_path / "wiki-consent.json"
+        cache_path.write_text("not-json", encoding="utf-8")
+        consent_path.write_text("not-json", encoding="utf-8")
+
+        client = PCGamingWikiClient(
+            cache_path=str(cache_path), consent_path=str(consent_path)
+        )
+
+        assert client.download_state("Any Game") == "no_decision"
+
+
 class TestPCGamingWikiClientGetConfigInfo:
     def test_get_config_info_returns_dict(self, monkeypatch):
         """get_config_info should return a dict with expected keys."""

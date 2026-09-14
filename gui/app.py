@@ -710,7 +710,11 @@ class App:
             game_name = getattr(game, "name", str(game))
             install_path = getattr(game, "install_path", "")
             try:
-                wiki_info = self._wiki_client.get_config_info(game_name, install_path=install_path)
+                wiki_info = self._wiki_client.get_config_info(
+                    game_name,
+                    install_path=install_path,
+                    allow_download=False,
+                )
                 expanded_paths = wiki_info.get("expanded_paths") or []
                 found_files = detect_config_files(expanded_paths)
 

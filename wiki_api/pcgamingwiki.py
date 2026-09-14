@@ -10,6 +10,8 @@ import glob as _glob_module
 import re
 import os
 import sys
+import tempfile
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import json
@@ -26,11 +28,15 @@ try:
 except ImportError:  # pragma: no cover
     BeautifulSoup = None  # type: ignore
 
-# Default cache file location (relative to the project root).
-# When running from a PyInstaller bundle, look inside the temp extraction dir.
 _BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_CACHE_DIR = os.path.join(_BASE_DIR, "cache")
+_BUNDLED_CACHE_FILE = os.path.join(_BASE_DIR, "cache", "wiki_cache.json")
+_USER_DATA_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~/.local/share")),
+    "GameTuner",
+)
+_CACHE_DIR = _USER_DATA_DIR
 _CACHE_FILE = os.path.join(_CACHE_DIR, "wiki_cache.json")
+_CONSENT_FILE = os.path.join(_CACHE_DIR, "wiki_download_consent.json")
 
 # PCGamingWiki Cargo API endpoint
 _API_URL = "https://www.pcgamingwiki.com/w/api.php"
@@ -408,7 +414,12 @@ def _parse_gamedata_config(
 class PCGamingWikiClient:
     """Client for querying PCGamingWiki for game configuration paths."""
 
-    def __init__(self, timeout: int = 10, cache_path: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        timeout: int = 10,
+        cache_path: Optional[str] = None,
+        consent_path: Optional[str] = None,
+    ) -> None:
         self.timeout = timeout
         self._session = requests.Session() if requests else None
         if self._session:
@@ -417,16 +428,55 @@ class PCGamingWikiClient:
             )
         self._cache: Dict[str, Any] = {}
         self._cache_path = cache_path or _CACHE_FILE
+        self._consent_path = consent_path or _CONSENT_FILE
+        self._download_decisions: Dict[str, Any] = {}
         self._load_cache()
+        self._load_download_decisions()
 
     def _load_cache(self) -> None:
         """Load the offline wiki cache from disk if available."""
-        if os.path.isfile(self._cache_path):
+        paths = [self._cache_path]
+        if self._cache_path == _CACHE_FILE and _BUNDLED_CACHE_FILE != _CACHE_FILE:
+            paths.append(_BUNDLED_CACHE_FILE)
+        for path in paths:
+            if not os.path.isfile(path):
+                continue
             try:
-                with open(self._cache_path, "r", encoding="utf-8") as f:
-                    self._cache = json.load(f)
+                with open(path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    self._cache = loaded
+                    return
             except (json.JSONDecodeError, OSError):
-                self._cache = {}
+                continue
+
+    def _load_download_decisions(self) -> None:
+        """Load per-game download decisions from durable user storage."""
+        try:
+            with open(self._consent_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                self._download_decisions = loaded.get("games", loaded)
+        except (json.JSONDecodeError, OSError):
+            self._download_decisions = {}
+
+    @staticmethod
+    def _write_json_atomic(path: str, payload: Dict[str, Any]) -> None:
+        """Write JSON without leaving a partial persistence file behind."""
+        directory = os.path.dirname(path) or "."
+        os.makedirs(directory, exist_ok=True)
+        fd, temporary_path = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=directory)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+            os.replace(temporary_path, path)
+        except Exception:
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                pass
+            raise
 
     @staticmethod
     def _normalize_title(title: str) -> str:
@@ -454,6 +504,49 @@ class PCGamingWikiClient:
             if self._normalize_title(key) == normalized:
                 return value
         return None
+
+    def download_state(self, game_title: str) -> str:
+        """Return ``cached``, ``no_decision``, ``declined``, or ``needs_update``."""
+        cached = self._lookup_cache(game_title)
+        if cached and cached.get("raw_paths"):
+            return "cached"
+        decision = self._download_decisions.get(self._normalize_title(game_title), {})
+        value = decision.get("decision") if isinstance(decision, dict) else decision
+        if value == "declined":
+            return "declined"
+        if value == "accepted":
+            return "needs_update"
+        return "no_decision"
+
+    def set_download_decision(self, game_title: str, decision: str) -> None:
+        """Persist an explicit per-game download decision."""
+        if decision not in {"accepted", "declined"}:
+            raise ValueError("decision must be 'accepted' or 'declined'")
+        self._download_decisions[self._normalize_title(game_title)] = {
+            "title": game_title,
+            "decision": decision,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._write_json_atomic(
+            self._consent_path,
+            {"version": 1, "games": self._download_decisions},
+        )
+
+    def clear_download_decision(self, game_title: str) -> None:
+        """Clear a decision so an explicit retry flow can ask again."""
+        self._download_decisions.pop(self._normalize_title(game_title), None)
+        self._write_json_atomic(
+            self._consent_path,
+            {"version": 1, "games": self._download_decisions},
+        )
+
+    def _save_cache_entry(self, game_title: str, result: Dict[str, Any]) -> None:
+        self._cache[game_title] = {
+            "page_title": result.get("page_title", game_title),
+            "raw_paths": list(result.get("raw_paths") or []),
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._write_json_atomic(self._cache_path, self._cache)
 
     def _expand_cached_raw_paths(self, raw_paths: List[str], install_path: str = "") -> List[str]:
         """Expand raw cached paths to local OS paths."""
@@ -507,7 +600,12 @@ class PCGamingWikiClient:
             _, expanded = self._scrape_wiki_page_raw(game_title)
         return expanded
 
-    def get_config_info(self, game_title: str, install_path: str = "") -> Dict[str, Any]:
+    def get_config_info(
+        self,
+        game_title: str,
+        install_path: str = "",
+        allow_download: bool = True,
+    ) -> Dict[str, Any]:
         """Return a dict with raw and expanded config paths for *game_title*.
 
         The returned dict has the following keys:
@@ -543,6 +641,14 @@ class PCGamingWikiClient:
             if cached.get("page_title"):
                 result["page_title"] = cached["page_title"]
                 result["url"] = _WIKI_BASE + cached["page_title"].replace(" ", "_")
+            _merge_known_local_paths(result, game_title, install_path)
+            return result
+
+        state = self.download_state(game_title)
+        if not allow_download and state != "needs_update":
+            result["error"] = (
+                "download_declined" if state == "declined" else "download_consent_required"
+            )
             _merge_known_local_paths(result, game_title, install_path)
             return result
 
@@ -582,6 +688,11 @@ class PCGamingWikiClient:
             result["expanded_paths"] = expanded
         except Exception as exc:  # pragma: no cover
             result["error"] = str(exc)
+        if result["raw_paths"] and state == "needs_update":
+            try:
+                self._save_cache_entry(game_title, result)
+            except OSError as exc:
+                result["error"] = f"cache_write_failed: {exc}"
         _merge_known_local_paths(result, game_title, install_path)
         return result
 
