@@ -1,5 +1,18 @@
 # Changelog
 
+# v0.08.4 (2026-09-14)
+
+### Fixed
+- F1 25 automatically changes Fullscreen to Windowed when enabling AMD FSR3 or XeFG unless the user explicitly selects Borderless Windowed.
+- F1 Frame Generation changes now preserve the game's valid Screen Mode constraint during Apply and read-back validation.
+
+### Validation
+- Full test suite: 247 passed.
+- F1 writer and automatic Screen Mode compatibility tests passed.
+- Real F1 25 Write validation completed successfully.
+
+---
+
 # v0.08.3 (2026-09-14)
 
 ### Fixed

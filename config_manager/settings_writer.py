@@ -397,7 +397,7 @@ def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
 
     frame_generation = settings.get(FRAME_GENERATION)
     if frame_generation is not None:
-        frame_generation_map = {"Off": "0", "AMD FSR3": "3", "XeFG": "4"}
+        frame_generation_map = {"Off": "0", "On": "4", "AMD FSR3": "3", "XeFG": "4"}
         if frame_generation in frame_generation_map:
             result = _replace_xml_attr(
                 result, "frame_gen", "mode", frame_generation_map[frame_generation]

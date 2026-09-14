@@ -143,6 +143,7 @@ F1_SETTING_OPTIONS: Dict[str, List[str]] = {
         "XeSS (Quality)", "XeSS (Balanced)", "XeSS (Performance)",
         "XeSS (Ultra Quality)",
     ],
+    FRAME_GENERATION: ["—", "Off", "AMD FSR3", "XeFG"],
 }
 
 FORZA_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {

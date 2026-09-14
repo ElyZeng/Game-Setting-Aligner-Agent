@@ -50,6 +50,26 @@ from config_manager.settings_writer import write_settings
 _UNABLE_TO_CHECK = object()
 
 
+def adjust_f1_frame_generation_changes(
+    game_name: str,
+    current_settings: Dict[str, Optional[str]],
+    changes: Dict[str, Optional[str]],
+) -> Dict[str, Optional[str]]:
+    """Apply F1's automatic Fullscreen -> Windowed FG compatibility behavior."""
+    name = game_name.casefold()
+    frame_generation = changes.get("frame_generation")
+    if (
+        "f1" in name
+        and "25" in name
+        and frame_generation not in (None, "", "Off", "N/A")
+        and current_settings.get(SCREEN_MODE) == "Fullscreen"
+        and SCREEN_MODE not in changes
+    ):
+        changes = dict(changes)
+        changes[SCREEN_MODE] = "Windowed"
+    return changes
+
+
 def _require_ctk() -> None:
     if ctk is None:
         raise ImportError(
@@ -327,7 +347,7 @@ class GameRow:
             val = var.get()
             if val != "—":
                 changes[key] = val
-        return changes
+        return adjust_f1_frame_generation_changes(self.game_name, self._key_settings or {}, changes)
 
     def _apply_settings(self) -> None:
         """Apply the dropdown changes to this game's config files."""

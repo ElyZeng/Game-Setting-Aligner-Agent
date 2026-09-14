@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from config_manager.settings_writer import write_settings
+from gui.app import adjust_f1_frame_generation_changes
 
 
 F1_XML = """<hardware_settings_config>
   <resolution width="1920" height="1080" displayMode="1" vsync="false" frameRateLimiterEnabled="true" frameRateLimiterValue="120" />
   <antialiasing taa="false" cas="1" dlss="false" fsr3="0" xess="true" />
   <aa_quality value="1" />
+    <frame_gen mode="0" />
+    <multi_frame_gen value="0" />
 </hardware_settings_config>"""
 
 
@@ -64,3 +67,30 @@ def test_writes_xess_balanced(tmp_path):
     assert 'fsr3="0"' in content
     assert 'xess="true"' in content
     assert '<aa_quality value="1"' in content
+
+
+def test_writes_frame_generation_on_for_registered_f1_name(tmp_path):
+    result, content = _write(tmp_path, {"frame_generation": "On"})
+
+    assert result[0]["status"] == "ok"
+    assert '<frame_gen mode="4"' in content
+
+
+def test_f1_frame_generation_auto_switches_fullscreen_to_windowed():
+    changes = adjust_f1_frame_generation_changes(
+        "F1® 25",
+        {"screen_mode": "Fullscreen"},
+        {"frame_generation": "XeFG"},
+    )
+
+    assert changes == {"frame_generation": "XeFG", "screen_mode": "Windowed"}
+
+
+def test_f1_frame_generation_preserves_explicit_screen_mode_choice():
+    changes = adjust_f1_frame_generation_changes(
+        "F1® 25",
+        {"screen_mode": "Fullscreen"},
+        {"frame_generation": "XeFG", "screen_mode": "Borderless Windowed"},
+    )
+
+    assert changes["screen_mode"] == "Borderless Windowed"
