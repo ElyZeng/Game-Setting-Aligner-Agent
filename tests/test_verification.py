@@ -54,6 +54,32 @@ def test_verified_game_still_requires_test_write_consent(tmp_path):
         backup_and_write("Example", "Steam", "1.0", [], {"vsync": "On"}, lambda *_: [], registry)
 
 
+def test_forza_rejects_vsync_on_with_unlimited_frame_limit_before_write(tmp_path):
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+    registry.enable_test_writes()
+    config_files = [{"expanded_path": "UserConfigSelections", "content": "<UserConfig/>"}]
+    fingerprint = structural_fingerprint(config_files)
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate",
+        "reason": "verified",
+        "rule": {},
+    }
+    writes = []
+
+    with pytest.raises(VerificationError, match="forza_incompatible_settings:vsync_on_unlimited"):
+        backup_and_write(
+            "Forza Horizon 6",
+            "Steam",
+            "1.0",
+            config_files,
+            {"vsync": "On", "frame_limit": "Unlimited"},
+            lambda *_args: writes.append(True),
+            registry,
+        )
+
+    assert writes == []
+
+
 def test_structural_fingerprint_ignores_setting_values():
     one = structural_fingerprint([{"expanded_path": "GameUserSettings.ini", "content": "VSync=True\n"}])
     two = structural_fingerprint([{"expanded_path": "GameUserSettings.ini", "content": "VSync=False\n"}])

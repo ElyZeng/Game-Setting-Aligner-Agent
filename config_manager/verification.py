@@ -304,6 +304,12 @@ def backup_and_write(
     verification = registry.status_for(game, platform, game_version, fingerprint)
     if verification["status"] not in {"write_candidate", "write_verified"}:
         raise VerificationError(f"write_not_allowed:{verification['reason']}")
+    if (
+        "forza" in game.lower()
+        and settings.get("vsync") == "On"
+        and settings.get("frame_limit") == "Unlimited"
+    ):
+        raise VerificationError("forza_incompatible_settings:vsync_on_unlimited")
 
     backup_root = registry.data_dir / "backups" / re.sub(r"[^A-Za-z0-9_.-]+", "_", game)
     staging = backup_root.with_name(backup_root.name + ".new")
