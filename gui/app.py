@@ -651,6 +651,13 @@ class App:
         self.root.after(0, self._on_scan_done, games)
 
     def _on_scan_done(self, games: List[Any]) -> None:
+        games = sorted(
+            games,
+            key=lambda game: (
+                str(getattr(game, "name", game)).casefold(),
+                str(getattr(game, "platform", "")).casefold(),
+            ),
+        )
         self._detected_games = list(games)
         # Clear old rows
         for row in self._game_rows:
