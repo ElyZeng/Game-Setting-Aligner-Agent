@@ -83,6 +83,38 @@ def test_release_update_installs_manifest_and_keeps_previous(tmp_path):
     assert registry.load()["manifest_version"] == "1.0.0"
 
 
+def test_status_uses_newly_installed_manifest_after_update(tmp_path):
+    config_files = [{"expanded_path": "UserConfigSelections", "content": "VSync=On\n"}]
+    fingerprint = structural_fingerprint(config_files)
+    manifest = {
+        "format_version": 1,
+        "manifest_version": "2.0.0",
+        "minimum_client_version": "0.05.1",
+        "games": [{
+            "game": "Forza Horizon 6", "platform": "Steam", "version": "1.0",
+            "fingerprint": fingerprint, "status": "write_candidate", "config_patterns": [],
+            "supported_settings": [], "reader_id": "existing-parser", "writer_id": "existing-writer",
+        }],
+    }
+    raw = json.dumps(manifest).encode("utf-8")
+    checksum = hashlib.sha256(raw).hexdigest()
+    responses = iter([
+        _Response({"assets": [
+            {"name": "verified-games.json", "browser_download_url": "manifest"},
+            {"name": "verified-games.json.sha256", "browser_download_url": "checksum"},
+        ]}),
+        _Response(content=raw),
+        _Response(text=checksum),
+    ])
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path, http_get=lambda *_args, **_kwargs: next(responses))
+
+    assert registry.status_for("Forza Horizon 6", "Steam", "1.0", fingerprint)["reason"] == "game_not_listed"
+    assert registry.update()["manifest_version"] == "2.0.0"
+    assert registry.status_for("Forza Horizon 6", "Steam", "1.0", fingerprint)["status"] == "write_candidate"
+    assert registry.status_for("Forza Horizon 6", "Steam", "2.0", fingerprint)["status"] == "candidate"
+    assert registry.status_for("Forza Horizon 6", "Steam", "1.0", "other")["status"] == "candidate"
+
+
 def test_empty_remote_manifest_preserves_builtin_rules(tmp_path):
     registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
     registry.current_path.write_text(json.dumps({

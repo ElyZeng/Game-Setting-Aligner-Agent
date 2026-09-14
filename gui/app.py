@@ -827,12 +827,44 @@ class App:
         result = self._verification_registry.update()
         log_path = result.get("log_path", self._verification_registry.log_path)
         if result["updated"]:
-            self.root.after(0, messagebox.showinfo, "Verification Rules", "Verification rules updated successfully.")
+            manifest_version = result.get("manifest_version", "unknown")
+            self.root.after(0, self._refresh_verification_statuses, manifest_version)
+            self.root.after(
+                0,
+                messagebox.showinfo,
+                "Verification Rules",
+                f"Verification rules {manifest_version} loaded. Refreshing game statuses.",
+            )
         else:
             self.root.after(
                 0, messagebox.showwarning, "Verification Rules",
                 f"Update not applied: {result['error']}\n\nDetails logged to:\n{log_path}",
             )
+
+    def _refresh_verification_statuses(self, manifest_version: str) -> None:
+        """Re-evaluate visible rows against a newly installed rule manifest."""
+        rows = list(self._game_rows)
+        self._status_label.configure(text=f"Rules {manifest_version} loaded. Refreshing game statuses…")
+
+        def _refresh() -> None:
+            for row in rows:
+                try:
+                    verification = self._verification_registry.status_for(
+                        row.game_name,
+                        row.platform,
+                        detect_game_version(row.install_path),
+                        structural_fingerprint(row._config_dicts),
+                    )
+                except Exception:
+                    verification = {"status": "candidate", "reason": "detection_failed"}
+                self.root.after(0, row.update_verification, verification)
+            self.root.after(
+                0,
+                self._status_label.configure,
+                {"text": f"{len(rows)} game(s) found. Rules {manifest_version} loaded."},
+            )
+
+        threading.Thread(target=_refresh, daemon=True).start()
 
     def _export_diagnostics(self) -> None:
         selected = [row for row in self._game_rows if row.selected]

@@ -259,13 +259,18 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     # Frame Generation
     fg = options_map.get("FrameGeneration")
     mfg = options_map.get("DLSS_MultiFrameGeneration")
-    parts = []
-    if fg:
-        parts.append(str(fg.get("value", "Off")))
-    if mfg:
-        parts.append(f"MFG: {mfg.get('value', '')}")
-    if parts:
-        r[FRAME_GENERATION] = " / ".join(parts)
+    if fg is not None:
+        value = fg.get("value")
+        if value in (False, 0, "0", "false", "False", "Off", "off"):
+            r[FRAME_GENERATION] = "Off"
+        elif value in (True, 1, "1", "true", "True", "On", "on"):
+            mfg_value = mfg.get("value") if mfg is not None else None
+            if mfg_value not in (None, "", 0, "0", "false", "False", "Off", "off"):
+                r[FRAME_GENERATION] = f"On / MFG: {mfg_value}"
+            else:
+                r[FRAME_GENERATION] = "On"
+        else:
+            r[FRAME_GENERATION] = "N/A"
 
     # Quick Preset — stored under /graphics/presets/QuickPresets
     qp = options_map.get("/graphics/presets/QuickPresets") or options_map.get("QuickPresets")
