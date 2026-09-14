@@ -1,5 +1,18 @@
 # Changelog
 
+# v0.07.8 (2026-09-14)
+
+### Fixed
+- Forza Horizon 6 now rejects the incompatible `V-Sync On` plus `Unlimited` frame-limit combination before writing files.
+- Cyberpunk 2077 now recognizes the real XeSS Frame Generation config shape and reports active `MFG: x2` state correctly.
+- Verification update handling and management tooling now preserve safe cache behavior and expose clearer update outcomes.
+
+### Validation
+- Full test suite: 219 passed.
+- Focused verification, CLI, and Cyberpunk tests: 41 passed.
+
+---
+
 # v0.07.7 (2026-09-14)
 
 ### Added
