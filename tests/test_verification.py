@@ -115,6 +115,53 @@ def test_status_uses_newly_installed_manifest_after_update(tmp_path):
     assert registry.status_for("Forza Horizon 6", "Steam", "1.0", "other")["status"] == "candidate"
 
 
+def test_failed_update_preserves_current_manifest_and_status(tmp_path):
+    current = {
+        "format_version": 1,
+        "manifest_version": "1.0.0",
+        "minimum_client_version": "0.05.1",
+        "games": [{
+            "game": "Forza Horizon 6", "platform": "Steam", "version": "1.0",
+            "fingerprint": "known", "status": "write_candidate", "config_patterns": [],
+            "supported_settings": [], "reader_id": "existing-parser", "writer_id": "existing-writer",
+        }],
+    }
+    replacement = {
+        "format_version": 1,
+        "manifest_version": "2.0.0",
+        "minimum_client_version": "0.05.1",
+        "games": [],
+    }
+    replacement_raw = json.dumps(replacement).encode("utf-8")
+    responses = iter([
+        _Response({"assets": [
+            {"name": "verified-games.json", "browser_download_url": "manifest"},
+            {"name": "verified-games.json.sha256", "browser_download_url": "checksum"},
+        ]}),
+        _Response(content=replacement_raw),
+        _Response(text="0" * 64),
+    ])
+    registry = VerificationRegistry(
+        "0.05.1", data_dir=tmp_path,
+        http_get=lambda *_args, **_kwargs: next(responses),
+    )
+    registry.current_path.write_text(json.dumps(current), encoding="utf-8")
+    original_bytes = registry.current_path.read_bytes()
+
+    result = registry.update()
+
+    assert result["updated"] is False
+    assert result["error"] == "manifest_checksum_mismatch"
+    assert result["manifest_version"] == "1.0.0"
+    assert registry.current_path.read_bytes() == original_bytes
+    status = registry.status_for("Forza Horizon 6", "Steam", "1.0", "known")
+    assert status == {
+        "status": "write_candidate",
+        "reason": "verified",
+        "rule": current["games"][0],
+    }
+
+
 def test_empty_remote_manifest_preserves_builtin_rules(tmp_path):
     registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
     registry.current_path.write_text(json.dumps({

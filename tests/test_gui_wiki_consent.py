@@ -154,3 +154,33 @@ def test_stale_detection_result_does_not_update_removed_row():
         [{"path": "settings.ini"}],
         {"status": "candidate"},
     )
+
+
+def test_failed_rule_update_does_not_refresh_visible_rows(monkeypatch, tmp_path):
+    app = gui_app.App.__new__(gui_app.App)
+    app._verification_registry = SimpleNamespace(
+        log_path=tmp_path / "verification.log",
+        update=lambda: {
+            "updated": False,
+            "manifest_version": "1.0.0",
+            "error": "manifest_checksum_mismatch",
+            "log_path": str(tmp_path / "verification.log"),
+        },
+    )
+    app._refresh_verification_statuses = lambda version: (_ for _ in ()).throw(
+        AssertionError("failed updates must not refresh rows")
+    )
+    warnings = []
+    monkeypatch.setattr(
+        gui_app.messagebox,
+        "showwarning",
+        lambda title, message: warnings.append((title, message)),
+    )
+    app.root = SimpleNamespace(after=lambda delay, callback, *args: callback(*args))
+
+    app._do_rule_update()
+
+    assert len(warnings) == 1
+    assert warnings[0][0] == "Verification Rules"
+    assert "manifest_checksum_mismatch" in warnings[0][1]
+    assert str(tmp_path / "verification.log") in warnings[0][1]
