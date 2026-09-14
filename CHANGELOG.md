@@ -1,5 +1,21 @@
 # Changelog
 
+# v0.07.9 (2026-09-14)
+
+### Added
+- Added guarded F1 25 XML writing for resolution, screen mode, V-Sync, frame limit, and FSR/XeSS upscaling modes.
+- Added F1 25 `write_candidate` verification coverage for the detected Steam build and structural fingerprint.
+
+### Fixed
+- Verification status now prefers exact platform/fingerprint rules over the built-in wildcard baseline.
+- F1 25 XeSS and FSR quality modes are reported using their game-specific `aa_quality` mappings.
+
+### Validation
+- Full test suite: 238 passed.
+- F1 writer fixture tests and real-config verification status passed.
+
+---
+
 # v0.07.8 (2026-09-14)
 
 ### Fixed
