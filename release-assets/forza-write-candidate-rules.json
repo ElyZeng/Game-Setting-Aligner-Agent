@@ -33,7 +33,7 @@
     "game": "F1 25",
     "platform": "Steam",
     "version": "1,0,141,2878",
-    "fingerprint": "e85374275148a8bb3b658061ae82fad6401f9e91437fe3ae80d8bd9c547f40f4",
+    "fingerprint": "30ecff703320a613209099ee3014ad6dc70f6b51c83cf2a2fb86de822b7c45c7",
     "status": "write_candidate",
     "config_patterns": [
       "%USERPROFILE%/Documents/My Games/F1 25/hardwaresettings/hardware_settings_config.xml"

@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.0 (2026-09-14)
+
+### Fixed
+- Corrected F1 25 verification matching to use the complete `hardwaresettings` directory fingerprint used by the GUI scanner.
+- F1 25 now reaches `write_candidate: verified` when its detected Steam version and config layout match the published rule.
+
+### Validation
+- Full test suite: 238 passed.
+- Real GUI-style F1 25 scan matched the write candidate rule.
+
+---
+
 # v0.07.9 (2026-09-14)
 
 ### Added
