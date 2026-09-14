@@ -1,5 +1,19 @@
 # Changelog
 
+# v0.07.6 (2026-09-14)
+
+### Fixed
+- Cyberpunk 2077 Frame Generation now reports the effective parent state instead of presenting a stale `DLSS_MultiFrameGeneration` child value when Frame Generation is Off.
+- Cyberpunk Frame Generation writes preserve the stored MFG multiplier while changing only the parent setting.
+- Check Rules now immediately refreshes all visible game verification statuses after a new manifest is installed.
+- The UI displays the loaded verification manifest version and preserves the previous safe cache when an update fails.
+
+### Validation
+- Full test suite: 169 passed on the merged PR branch.
+- Focused #30/#40 tests: 22 passed.
+
+---
+
 # v0.07.5 (2026-09-11)
 
 ### Added
