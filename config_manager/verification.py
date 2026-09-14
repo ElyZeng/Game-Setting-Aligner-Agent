@@ -382,6 +382,13 @@ class VerificationRegistry:
             if _normalise_title(rule["game"]) == _normalise_title(game)
             and rule["platform"].lower() in ("*", platform.lower())
         ]
+        matching.sort(
+            key=lambda rule: (
+                rule["platform"].lower() != "*",
+                rule.get("fingerprint") not in (None, "*"),
+            ),
+            reverse=True,
+        )
         if not matching:
             return {"status": "candidate", "reason": "game_not_listed", "rule": None}
         for rule in matching:

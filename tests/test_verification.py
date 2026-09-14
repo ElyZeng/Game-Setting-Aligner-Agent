@@ -142,6 +142,27 @@ def test_status_uses_newly_installed_manifest_after_update(tmp_path):
     assert registry.status_for("Forza Horizon 6", "Steam", "1.0", "other")["status"] == "candidate"
 
 
+def test_specific_rule_overrides_builtin_wildcard_rule(tmp_path):
+    registry = VerificationRegistry("0.07.8", data_dir=tmp_path)
+    fingerprint = "f1-fingerprint"
+    registry.current_path.write_text(json.dumps({
+        "format_version": 1,
+        "manifest_version": "f1-test",
+        "minimum_client_version": "0.07.8",
+        "games": [{
+            "game": "F1 25", "platform": "Steam", "version": "unknown",
+            "fingerprint": fingerprint, "status": "write_candidate",
+            "config_patterns": [], "supported_settings": [],
+            "reader_id": "f1-xml-parser", "writer_id": "f1-xml-writer",
+        }],
+    }), encoding="utf-8")
+
+    status = registry.status_for("F1 25", "Steam", "unknown", fingerprint)
+
+    assert status["status"] == "write_candidate"
+    assert status["reason"] == "verified"
+
+
 def test_failed_update_preserves_current_manifest_and_status(tmp_path):
     current = {
         "format_version": 1,
