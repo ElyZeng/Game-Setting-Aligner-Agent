@@ -258,12 +258,23 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
 
     # Frame Generation
     fg = options_map.get("FrameGeneration")
+    xess_fg = options_map.get("XESS_FrameGeneration")
     mfg = options_map.get("DLSS_MultiFrameGeneration")
     if fg is not None:
         value = fg.get("value")
         if value in (False, 0, "0", "false", "False", "Off", "off"):
             r[FRAME_GENERATION] = "Off"
-        elif value in (True, 1, "1", "true", "True", "On", "on"):
+        elif (
+            str(value).upper() == "XESS"
+            and xess_fg is not None
+            and xess_fg.get("value") in (False, 0, "0", "false", "False", "Off", "off")
+        ):
+            r[FRAME_GENERATION] = "Off"
+        elif value in (True, 1, "1", "true", "True", "On", "on") or (
+            str(value).upper() == "XESS"
+            and xess_fg is not None
+            and xess_fg.get("value") in (True, 1, "1", "true", "True", "On", "on")
+        ):
             mfg_value = mfg.get("value") if mfg is not None else None
             if mfg_value not in (None, "", 0, "0", "false", "False", "Off", "off"):
                 r[FRAME_GENERATION] = f"On / MFG: {mfg_value}"

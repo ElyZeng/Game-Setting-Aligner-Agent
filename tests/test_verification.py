@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 
 import pytest
 
@@ -186,6 +187,119 @@ def test_failed_update_preserves_current_manifest_and_status(tmp_path):
         "reason": "verified",
         "rule": current["games"][0],
     }
+
+
+def _write_rule_bundle(path, manifest, checksum=None, extra_files=None):
+    raw = json.dumps(manifest, indent=2).encode("utf-8")
+    digest = checksum or hashlib.sha256(raw).hexdigest()
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("verified-games.json", raw)
+        archive.writestr("verified-games.json.sha256", f"{digest}  verified-games.json\n")
+        for name, content in (extra_files or {}).items():
+            archive.writestr(name, content)
+    return raw
+
+
+def _manifest(version="2.0.0", minimum="0.05.1"):
+    return {
+        "format_version": 1,
+        "manifest_version": version,
+        "published_at": "2026-09-14T00:00:00Z",
+        "minimum_client_version": minimum,
+        "games": [],
+    }
+
+
+def test_offline_bundle_preview_and_import_preserve_previous_manifest(tmp_path):
+    registry = VerificationRegistry("0.07.7", data_dir=tmp_path)
+    registry.current_path.write_text(json.dumps(_manifest("1.0.0")), encoding="utf-8")
+    bundle = tmp_path / "rules.gtrules"
+    incoming_raw = _write_rule_bundle(bundle, _manifest("2.0.0"))
+
+    preview = registry.preview_offline_bundle(bundle)
+    result = registry.import_offline_bundle(bundle)
+
+    assert preview["manifest_version"] == "2.0.0"
+    assert preview["integrity"] == "sha256_verified"
+    assert preview["source"] == "offline_bundle"
+    assert result["installed"] is True
+    assert registry.current_path.read_bytes() == incoming_raw
+    assert json.loads(registry.previous_path.read_text(encoding="utf-8"))["manifest_version"] == "1.0.0"
+    log = registry.log_path.read_text(encoding="utf-8")
+    assert "source=offline_bundle" in log
+    assert "incoming_version=2.0.0" in log
+    assert "result=installed" in log
+
+
+@pytest.mark.parametrize(
+    ("bundle_factory", "error"),
+    [
+        (lambda path: path.write_bytes(b"not a zip"), "invalid_offline_bundle"),
+        (lambda path: _write_rule_bundle(path, _manifest(), checksum="0" * 64), "manifest_checksum_mismatch"),
+        (lambda path: _write_rule_bundle(path, _manifest(minimum="99.0.0")), "client_update_required"),
+        (lambda path: _write_rule_bundle(path, {**_manifest(), "games": "invalid"}), "invalid_manifest_games"),
+        (lambda path: _write_rule_bundle(path, _manifest(), extra_files={"private.txt": "secret"}), "invalid_offline_bundle_contents"),
+    ],
+)
+def test_invalid_offline_bundle_does_not_change_caches(tmp_path, bundle_factory, error):
+    registry = VerificationRegistry("0.07.7", data_dir=tmp_path)
+    registry.current_path.write_text(json.dumps(_manifest("1.0.0")), encoding="utf-8")
+    registry.previous_path.write_text(json.dumps(_manifest("0.9.0")), encoding="utf-8")
+    before_current = registry.current_path.read_bytes()
+    before_previous = registry.previous_path.read_bytes()
+    bundle = tmp_path / "rules.gtrules"
+    bundle_factory(bundle)
+
+    with pytest.raises(VerificationError, match=error):
+        registry.import_offline_bundle(bundle)
+
+    assert registry.current_path.read_bytes() == before_current
+    assert registry.previous_path.read_bytes() == before_previous
+    assert error in registry.log_path.read_text(encoding="utf-8")
+
+
+def test_older_offline_bundle_requires_explicit_rollback(tmp_path):
+    registry = VerificationRegistry("0.07.7", data_dir=tmp_path)
+    registry.current_path.write_text(json.dumps(_manifest("2.0.0")), encoding="utf-8")
+    bundle = tmp_path / "rules.gtrules"
+    _write_rule_bundle(bundle, _manifest("1.0.0"))
+
+    with pytest.raises(VerificationError, match="offline_manifest_rollback_required"):
+        registry.import_offline_bundle(bundle)
+
+    result = registry.import_offline_bundle(bundle, allow_rollback=True)
+    assert result["installed"] is True
+    assert result["rollback"] is True
+    assert registry.load()["manifest_version"] == "1.0.0"
+
+
+def test_equivalent_manifest_version_is_not_a_rollback(tmp_path):
+    registry = VerificationRegistry("0.07.7", data_dir=tmp_path)
+    registry.current_path.write_text(json.dumps(_manifest("1.0")), encoding="utf-8")
+    bundle = tmp_path / "rules.gtrules"
+    _write_rule_bundle(bundle, _manifest("1.0.0"))
+
+    result = registry.import_offline_bundle(bundle)
+
+    assert result["installed"] is True
+    assert result["rollback"] is False
+
+
+def test_offline_bundle_atomic_install_failure_preserves_caches(tmp_path, monkeypatch):
+    registry = VerificationRegistry("0.07.7", data_dir=tmp_path)
+    registry.current_path.write_text(json.dumps(_manifest("1.0.0")), encoding="utf-8")
+    registry.previous_path.write_text(json.dumps(_manifest("0.9.0")), encoding="utf-8")
+    before_current = registry.current_path.read_bytes()
+    before_previous = registry.previous_path.read_bytes()
+    bundle = tmp_path / "rules.gtrules"
+    _write_rule_bundle(bundle, _manifest("2.0.0"))
+    monkeypatch.setattr(registry, "_replace_current", lambda raw: (_ for _ in ()).throw(OSError("disk full")))
+
+    with pytest.raises(VerificationError, match="offline_bundle_install_failed"):
+        registry.import_offline_bundle(bundle)
+
+    assert registry.current_path.read_bytes() == before_current
+    assert registry.previous_path.read_bytes() == before_previous
 
 
 def test_empty_remote_manifest_preserves_builtin_rules(tmp_path):

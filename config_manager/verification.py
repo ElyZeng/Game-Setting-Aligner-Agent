@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import tempfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -23,6 +24,8 @@ logger = logging.getLogger(__name__)
 MANIFEST_FORMAT_VERSION = 1
 STATUSES = frozenset({"candidate", "read_verified", "write_candidate", "write_verified", "deprecated"})
 DEFAULT_RELEASE_API = "https://api.github.com/repos/ElyZeng/Game-Tuner-POC/releases/latest"
+OFFLINE_BUNDLE_FILES = frozenset({"verified-games.json", "verified-games.json.sha256"})
+MAX_OFFLINE_MANIFEST_BYTES = 5 * 1024 * 1024
 _BUILTIN_GAMES = (
     "Black Myth: Wukong",
     "Clair Obscur: Expedition 33",
@@ -74,6 +77,17 @@ def version_at_least(current: str, minimum: str) -> bool:
     left, right = parts(current), parts(minimum)
     length = max(len(left), len(right))
     return (left + [0] * (length - len(left))) >= (right + [0] * (length - len(right)))
+
+
+def _manifest_version_key(value: str) -> tuple[int, ...]:
+    if value.startswith("builtin-"):
+        return (0,)
+    parts = [int(part) for part in re.findall(r"\d+", value)]
+    if not parts:
+        raise VerificationError("invalid_manifest_version")
+    while len(parts) > 1 and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
 
 
 def structural_fingerprint(config_files: Iterable[Dict[str, Any]]) -> str:
@@ -245,6 +259,102 @@ class VerificationRegistry:
                 "error": str(exc),
                 "log_path": str(self.log_path),
             }
+
+    def _read_offline_bundle(self, bundle_path: Path) -> tuple[Dict[str, Any], bytes]:
+        try:
+            with zipfile.ZipFile(bundle_path) as archive:
+                names = archive.namelist()
+                if len(names) != len(set(names)) or set(names) != OFFLINE_BUNDLE_FILES:
+                    raise VerificationError("invalid_offline_bundle_contents")
+                manifest_info = archive.getinfo("verified-games.json")
+                checksum_info = archive.getinfo("verified-games.json.sha256")
+                if manifest_info.file_size > MAX_OFFLINE_MANIFEST_BYTES:
+                    raise VerificationError("offline_manifest_too_large")
+                if checksum_info.file_size > 1024:
+                    raise VerificationError("invalid_offline_bundle_checksum")
+                raw = archive.read("verified-games.json")
+                checksum_text = archive.read("verified-games.json.sha256").decode("ascii")
+        except VerificationError:
+            raise
+        except (OSError, UnicodeError, zipfile.BadZipFile, KeyError) as exc:
+            raise VerificationError("invalid_offline_bundle") from exc
+
+        expected = checksum_text.strip().split()[0].lower() if checksum_text.strip() else ""
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise VerificationError("invalid_offline_bundle_checksum")
+        if hashlib.sha256(raw).hexdigest() != expected:
+            raise VerificationError("manifest_checksum_mismatch")
+        try:
+            manifest = json.loads(raw.decode("utf-8"))
+        except (UnicodeError, ValueError) as exc:
+            raise VerificationError("invalid_offline_manifest") from exc
+        if not isinstance(manifest, dict):
+            raise VerificationError("invalid_offline_manifest")
+        validate_manifest(manifest, self.client_version)
+        if not isinstance(manifest.get("manifest_version"), str):
+            raise VerificationError("invalid_manifest_version")
+        if not isinstance(manifest.get("published_at"), str):
+            raise VerificationError("invalid_manifest_published_at")
+        return manifest, raw
+
+    def preview_offline_bundle(self, bundle_path: Path) -> Dict[str, Any]:
+        """Validate an offline bundle and return non-installing review metadata."""
+        manifest, _ = self._read_offline_bundle(Path(bundle_path))
+        current_version = str(self.load().get("manifest_version", "builtin-1"))
+        incoming_version = str(manifest["manifest_version"])
+        rollback = _manifest_version_key(incoming_version) < _manifest_version_key(current_version)
+        return {
+            "source": "offline_bundle",
+            "manifest_version": incoming_version,
+            "current_version": current_version,
+            "published_at": manifest["published_at"],
+            "minimum_client_version": manifest["minimum_client_version"],
+            "rule_count": len(manifest["games"]),
+            "integrity": "sha256_verified",
+            "publisher_authenticated": False,
+            "trusted_channel_required": True,
+            "rollback": rollback,
+        }
+
+    def import_offline_bundle(
+        self, bundle_path: Path, allow_rollback: bool = False
+    ) -> Dict[str, Any]:
+        """Validate and atomically install a trusted-channel offline rule bundle."""
+        current_version = str(self.load().get("manifest_version", "builtin-1"))
+        incoming_version = "unknown"
+        try:
+            manifest, raw = self._read_offline_bundle(Path(bundle_path))
+            incoming_version = str(manifest["manifest_version"])
+            rollback = _manifest_version_key(incoming_version) < _manifest_version_key(current_version)
+            if rollback and not allow_rollback:
+                raise VerificationError("offline_manifest_rollback_required")
+            try:
+                self._replace_current(raw)
+            except OSError as exc:
+                raise VerificationError("offline_bundle_install_failed") from exc
+            logger.info(
+                "import source=offline_bundle current_version=%s incoming_version=%s "
+                "result=installed rollback=%s",
+                current_version, incoming_version, rollback,
+            )
+            return {
+                "installed": True,
+                "source": "offline_bundle",
+                "manifest_version": incoming_version,
+                "previous_version": current_version,
+                "rollback": rollback,
+                "integrity": "sha256_verified",
+                "publisher_authenticated": False,
+                "trusted_channel_required": True,
+                "log_path": str(self.log_path),
+            }
+        except (OSError, VerificationError) as exc:
+            logger.error(
+                "import source=offline_bundle current_version=%s incoming_version=%s "
+                "result=rejected reason=%s",
+                current_version, incoming_version, exc,
+            )
+            raise
 
     def _replace_current(self, raw: bytes) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

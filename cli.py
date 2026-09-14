@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
@@ -183,6 +184,26 @@ def cmd_update_verification(args):
     _json_out(VerificationRegistry(__version__).update())
 
 
+def cmd_import_verification(args):
+    from config_manager import VerificationError, VerificationRegistry
+
+    data_dir = Path(args.data_dir) if args.data_dir else None
+    registry = VerificationRegistry(__version__, data_dir=data_dir)
+    try:
+        result = registry.import_offline_bundle(
+            Path(args.bundle), allow_rollback=args.allow_rollback
+        )
+        _json_out(result)
+    except (OSError, VerificationError) as exc:
+        _json_out({
+            "installed": False,
+            "source": "offline_bundle",
+            "error": str(exc),
+            "log_path": str(registry.log_path),
+        })
+        raise SystemExit(1)
+
+
 def cmd_diagnostic_export(args):
     from config_manager import ConfigExporter, export_diagnostic_package
     from wiki_api import PCGamingWikiClient
@@ -293,6 +314,15 @@ def build_parser():
 
     s = sub.add_parser("update-verification", help="Download the latest verified-games Release manifest")
     s.set_defaults(func=cmd_update_verification)
+
+    s = sub.add_parser("import-rules", help="Import a trusted-channel offline verification-rule bundle")
+    s.add_argument("bundle", help="Path to a .gtrules offline bundle")
+    s.add_argument(
+        "--allow-rollback", action="store_true",
+        help="Explicitly allow installation of an older manifest version",
+    )
+    s.add_argument("--data-dir", help=argparse.SUPPRESS)
+    s.set_defaults(func=cmd_import_verification)
 
     s = sub.add_parser("diagnostic-export", help="Export anonymous diagnostic ZIP for selected games")
     s.add_argument("--games", help="Comma-separated detected game names (default: all)")

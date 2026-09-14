@@ -17,6 +17,15 @@ def _cyberpunk_settings(frame_generation, multi_frame_generation="missing"):
     return json.dumps({"data": [{"group_name": "/video/display", "options": options}]})
 
 
+def _cyberpunk_xess_settings(xess_frame_generation, multi_frame_generation="x2"):
+    return json.dumps({"data": [{"group_name": "/graphics/presets", "options": [
+        {"name": "ResolutionScaling", "value": "XeSS"},
+        {"name": "FrameGeneration", "value": "XESS"},
+        {"name": "XESS_FrameGeneration", "value": xess_frame_generation},
+        {"name": "DLSS_MultiFrameGeneration", "value": multi_frame_generation},
+    ]}]})
+
+
 def _parse_frame_generation(frame_generation, multi_frame_generation="missing"):
     return extract_key_settings(
         "Cyberpunk 2077",
@@ -34,6 +43,22 @@ def test_off_ignores_stale_multi_frame_generation_multiplier():
 
 def test_on_displays_active_multi_frame_generation_multiplier():
     assert _parse_frame_generation(True, "x2") == "On / MFG: x2"
+
+
+def test_xess_frame_generation_parent_uses_xess_enable_flag():
+    settings = extract_key_settings(
+        "Cyberpunk 2077",
+        [{"found": True, "expanded_path": "UserSettings.json", "content": _cyberpunk_xess_settings(True)}],
+    )
+    assert settings[FRAME_GENERATION] == "On / MFG: x2"
+
+
+def test_xess_frame_generation_off_ignores_stale_mfg():
+    settings = extract_key_settings(
+        "Cyberpunk 2077",
+        [{"found": True, "expanded_path": "UserSettings.json", "content": _cyberpunk_xess_settings(False)}],
+    )
+    assert settings[FRAME_GENERATION] == "Off"
 
 
 @pytest.mark.parametrize("multiplier", ["missing", None, "", "Off"])

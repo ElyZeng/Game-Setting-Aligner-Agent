@@ -124,12 +124,20 @@ python cli.py verification-status "Counter-Strike 2"
 # 下載並驗證最新 GitHub Release 名單
 python cli.py update-verification
 
+# 從核准可信管道匯入離線規則包
+python cli.py import-rules verified-rules.gtrules
+
+# 明確允許安裝較舊版本
+python cli.py import-rules verified-rules.gtrules --allow-rollback
+
 # 匯出已選遊戲的匿名診斷 ZIP；設定內容預設不會包含
 python cli.py diagnostic-export --games "Counter-Strike 2,Street Fighter 6"
 python cli.py diagnostic-export --games "Counter-Strike 2" --include-content
 ```
 
 `update-verification` 失敗時，`error` 欄位會標示失敗原因，詳細偵錯記錄（連線狀態、Release 資產清單、雜湊比對結果）會寫入 `%LOCALAPPDATA%\GameTuner\logs\verification.log`，回報問題時請附上這份記錄。
+
+離線 `.gtrules` 資料包會驗證 SHA-256、manifest schema、格式版本及最低 client version，安裝時保留上一份有效規則。SHA-256 只能證明資料完整性，**不能驗證發布者身分**；manifest 與 checksum 若同時被替換，雜湊仍可能吻合。因此只應匯入透過核准可信管道取得的資料包。較舊版本預設拒絕，只有人工確認後才使用 `--allow-rollback`。
 
 GUI 的 **Export Diagnostics** 會先開啟逐檔選取視窗。`input`、`key`、`binding`、`save`、`log`、`cache` 與空檔會預設排除；使用者仍可手動調整、全選、全不選或恢復推薦選取。若要包含匿名化設定內容，建立 ZIP 前會再次確認。
 
@@ -146,6 +154,7 @@ python cli.py apply "Counter-Strike 2" --settings '{"vsync": "Off"}' --confirm-t
 ```bash
 python tools/manage_verification.py candidate game-tuner-report-<id>.zip --output candidate.json
 python tools/manage_verification.py build-release reviewed-rules.json --output-dir release-assets --version 1.0.0 --minimum-client-version 0.05.1
+python tools/manage_verification.py build-bundle reviewed-rules.json --output verified-rules.gtrules --version 1.0.0 --minimum-client-version 0.05.1
 ```
 
 將 `release-assets/verified-games.json` 及 `release-assets/verified-games.json.sha256` 以同一個 Release 上傳至 `ElyZeng/Game-Tuner-POC`。
