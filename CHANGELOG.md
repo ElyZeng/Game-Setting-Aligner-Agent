@@ -1,5 +1,18 @@
 # Changelog
 
+# v0.07.7 (2026-09-14)
+
+### Added
+- PCGamingWiki configuration data now persists in the per-user Game Tuner cache instead of relying only on bundled files.
+- The GUI asks before downloading PCGamingWiki data on first use and when newly detected games have no cached configuration data.
+- Download decisions persist across restarts, while declined games remain offline and cached games are not downloaded again.
+
+### Validation
+- Added GUI consent and persistence regression coverage.
+- Full test suite validated before release build.
+
+---
+
 # v0.07.6 (2026-09-14)
 
 ### Fixed
