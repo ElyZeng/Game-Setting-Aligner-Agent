@@ -749,7 +749,7 @@ def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
             r[UPSCALING] = "DLSS"
         elif fsr3 not in {"0", "", "false", "off"}:
             quality = fsr_quality_names.get(str(quality_value))
-            r[UPSCALING] = f"FSR3 ({quality})" if quality else f"FSR3 ({fsr3})"
+            r[UPSCALING] = f"FSR ({quality})" if quality else f"FSR ({fsr3})"
         elif xess:
             quality = quality_names.get(str(quality_value))
             r[UPSCALING] = f"XeSS ({quality})" if quality else "XeSS"
@@ -760,7 +760,11 @@ def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
     multi_frame_gen = find_node("multi_frame_gen")
     frame_gen_value = frame_gen.get("mode", "0") if frame_gen is not None else "0"
     multi_frame_value = multi_frame_gen.get("value", "0") if multi_frame_gen is not None else "0"
-    r[FRAME_GENERATION] = "Off" if frame_gen_value in {"0", "", "off"} and multi_frame_value in {"0", "", "off"} else "On"
+    frame_generation_names = {"3": "AMD FSR3", "4": "XeFG"}
+    if frame_gen_value in {"0", "", "off"} and multi_frame_value in {"0", "", "off"}:
+        r[FRAME_GENERATION] = "Off"
+    else:
+        r[FRAME_GENERATION] = frame_generation_names.get(frame_gen_value, "N/A")
 
     dynamic = find_node("dynamicresolution_enabled")
     if dynamic is not None:

@@ -330,7 +330,7 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "FSR3 (Ultra Performance)"
+        assert result["upscaling"] == "FSR (Ultra Performance)"
 
     def test_parse_fsr3_performance(self):
         from config_manager.settings_parser import extract_key_settings
@@ -344,7 +344,7 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "FSR3 (Performance)"
+        assert result["upscaling"] == "FSR (Performance)"
 
     def test_parse_fsr3_balanced(self):
         from config_manager.settings_parser import extract_key_settings
@@ -358,7 +358,25 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "FSR3 (Balanced)"
+        assert result["upscaling"] == "FSR (Balanced)"
+
+    @pytest.mark.parametrize(
+        ("mode", "expected"),
+        [("0", "Off"), ("3", "AMD FSR3"), ("4", "XeFG")],
+    )
+    def test_parse_f1_frame_generation_provider(self, mode, expected):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = f"""<hardware_settings_config>
+  <frame_gen mode="{mode}" />
+  <multi_frame_gen value="0" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1® 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["frame_generation"] == expected
 
     def test_dynamic_resolution_preserves_auto_target(self):
         from config_manager.settings_parser import extract_key_settings

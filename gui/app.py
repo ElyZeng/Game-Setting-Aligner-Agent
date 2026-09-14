@@ -34,6 +34,9 @@ from config_manager.config_exporter import (
 from config_manager.settings_parser import (
     extract_key_settings,
     ALL_KEYS,
+    RESOLUTION,
+    SCREEN_MODE,
+    FRAME_GENERATION,
     DISPLAY_NAMES,
     DISPLAY_NAMES_EN,
     SETTING_OPTIONS,
@@ -251,8 +254,21 @@ class GameRow:
             self._setting_labels[key] = val_label
 
             # Dropdown — only for editable settings (not N/A)
-            if value != "N/A" and is_setting_writable_for_game(self.game_name, key):
+            borderless_resolution = (
+                key == RESOLUTION
+                and "f1" in self.game_name.casefold()
+                and "25" in self.game_name.casefold()
+                and self._key_settings.get(SCREEN_MODE) == "Borderless Windowed"
+            )
+            if value != "N/A" and not borderless_resolution and is_setting_writable_for_game(self.game_name, key):
                 options = setting_options_for_game(self.game_name, key)
+                if (
+                    key == SCREEN_MODE
+                    and "f1" in self.game_name.casefold()
+                    and "25" in self.game_name.casefold()
+                    and self._key_settings.get(FRAME_GENERATION) not in (None, "", "Off", "N/A")
+                ):
+                    options = [option for option in options if option != "Fullscreen"]
                 var = ctk.StringVar(value="—")
                 self._setting_vars[key] = var
 

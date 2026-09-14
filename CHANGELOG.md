@@ -1,5 +1,18 @@
 # Changelog
 
+# v0.08.3 (2026-09-14)
+
+### Fixed
+- F1 25 now limits Screen Mode to Windowed or Borderless Windowed while Frame Generation is enabled.
+- The same F1 compatibility rule is enforced before writing, including non-GUI write callers.
+- F1 Frame Generation writer mappings now support Off, AMD FSR3, and XeFG.
+
+### Validation
+- Full test suite: 244 passed.
+- F1 Frame Generation/Screen Mode compatibility tests passed.
+
+---
+
 # v0.08.2 (2026-09-14)
 
 ### Fixed

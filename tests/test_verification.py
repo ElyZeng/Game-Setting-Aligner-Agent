@@ -81,6 +81,31 @@ def test_forza_rejects_vsync_on_with_unlimited_frame_limit_before_write(tmp_path
     assert writes == []
 
 
+def test_f1_rejects_frame_generation_with_fullscreen_before_write(tmp_path):
+    registry = VerificationRegistry("0.08.2", data_dir=tmp_path)
+    registry.enable_test_writes()
+    config_files = [{"expanded_path": "hardware_settings_config.xml", "content": "<hardware_settings_config/>"}]
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate",
+        "reason": "verified",
+        "rule": {},
+    }
+    writes = []
+
+    with pytest.raises(VerificationError, match="f1_incompatible_settings:frame_generation_fullscreen"):
+        backup_and_write(
+            "F1® 25",
+            "Steam",
+            "1,0,141,2878",
+            config_files,
+            {"frame_generation": "XeFG", "screen_mode": "Fullscreen"},
+            lambda *_args: writes.append(True),
+            registry,
+        )
+
+    assert writes == []
+
+
 def test_structural_fingerprint_ignores_setting_values():
     one = structural_fingerprint([{"expanded_path": "GameUserSettings.ini", "content": "VSync=True\n"}])
     two = structural_fingerprint([{"expanded_path": "GameUserSettings.ini", "content": "VSync=False\n"}])

@@ -427,6 +427,13 @@ def backup_and_write(
         and settings.get("frame_limit") == "Unlimited"
     ):
         raise VerificationError("forza_incompatible_settings:vsync_on_unlimited")
+    if (
+        "f1" in game.lower()
+        and "25" in game.lower()
+        and settings.get("frame_generation") not in (None, "", "Off", "N/A")
+        and settings.get("screen_mode") == "Fullscreen"
+    ):
+        raise VerificationError("f1_incompatible_settings:frame_generation_fullscreen")
 
     backup_root = registry.data_dir / "backups" / re.sub(r"[^A-Za-z0-9_.-]+", "_", game)
     staging = backup_root.with_name(backup_root.name + ".new")
