@@ -9,7 +9,7 @@
 ### Validation
 - Full test suite: 247 passed.
 - F1 writer and automatic Screen Mode compatibility tests passed.
-- Real F1 25 Write validation completed successfully.
+- F1 25 base Write flow was manually validated; Quick Preset/preset Write was not tested and remains outside the current write rule.
 
 ---
 
