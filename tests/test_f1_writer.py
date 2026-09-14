@@ -16,7 +16,7 @@ def _write(tmp_path, settings):
     path = tmp_path / "hardware_settings_config.xml"
     path.write_text(F1_XML, encoding="utf-8")
     result = write_settings(
-        "F1 25",
+        "F1® 25",
         [{"expanded_path": str(path), "content": F1_XML, "found": True}],
         settings,
     )

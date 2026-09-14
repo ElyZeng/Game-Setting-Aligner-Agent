@@ -528,7 +528,7 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
         return "cs2"
     if "forza" in name_lower:
         return "forza_xml"
-    if "f1 25" in name_lower:
+    if "f1" in name_lower and "25" in name_lower:
         return "f1_xml"
 
     readable = [c for c in config_files if c.get("content") and c.get("found")]

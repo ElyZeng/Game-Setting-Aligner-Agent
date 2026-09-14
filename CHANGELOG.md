@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.1 (2026-09-14)
+
+### Fixed
+- F1 25 writer dispatch now recognizes the Steam scanner's `F1® 25` game name instead of falling back to the Forza XML writer.
+- F1 25 Screen Mode and other XML writes now use the F1-specific writer and read-back validation correctly.
+
+### Validation
+- Full test suite: 238 passed.
+- F1 writer tests passed with the real `F1® 25` scanner name.
+
+---
+
 # v0.08.0 (2026-09-14)
 
 ### Fixed
