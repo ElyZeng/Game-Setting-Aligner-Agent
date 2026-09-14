@@ -683,8 +683,6 @@ class App:
             self._offer_wiki_download(games)
             self._start_config_detection(list(games))
 
-        self.root.after(500, self._offer_rule_update)
-
     def _set_scanning(self, scanning: bool) -> None:
         if scanning:
             self._progress.pack(fill="x", padx=16, pady=(4, 0))

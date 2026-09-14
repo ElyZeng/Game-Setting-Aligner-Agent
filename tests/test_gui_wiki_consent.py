@@ -81,3 +81,17 @@ def test_manual_retry_starts_detection_after_acceptance(monkeypatch):
     app._retry_wiki_download()
 
     assert [game.name for game in started] == ["Declined"]
+
+
+def test_scan_completion_does_not_offer_rule_update():
+    app = gui_app.App.__new__(gui_app.App)
+    app._detected_games = []
+    app._game_rows = []
+    app._status_label = SimpleNamespace(configure=lambda **kwargs: None)
+    app._set_scanning = lambda scanning: None
+    scheduled = []
+    app.root = SimpleNamespace(after=lambda *args: scheduled.append(args))
+
+    app._on_scan_done([])
+
+    assert scheduled == []
