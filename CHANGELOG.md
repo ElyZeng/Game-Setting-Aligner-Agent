@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.2 (2026-09-14)
+
+### Fixed
+- F1 25 GUI now exposes dedicated FSR/XeSS quality dropdown options.
+- F1 25 Resolution writes are covered using the registered Steam scanner name `F1® 25`.
+
+### Validation
+- Full test suite: 240 passed.
+- F1 writer and options focused tests: 15 passed.
+
+---
+
 # v0.08.1 (2026-09-14)
 
 ### Fixed

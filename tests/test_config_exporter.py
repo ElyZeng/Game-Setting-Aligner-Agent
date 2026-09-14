@@ -228,6 +228,16 @@ DisplayMode154_Height=1050
 
 
 class TestF1Parser:
+    def test_f1_options_include_upscaling_quality_modes(self):
+        from config_manager.settings_parser import UPSCALING, setting_options_for_game
+
+        options = setting_options_for_game("F1® 25", UPSCALING)
+
+        assert "FSR3 (Quality)" in options
+        assert "FSR3 (Ultra Performance)" in options
+        assert "XeSS (Balanced)" in options
+        assert "XeSS (Ultra Quality)" in options
+
     def test_parse_hardware_settings_config(self):
         from config_manager.settings_parser import extract_key_settings
 

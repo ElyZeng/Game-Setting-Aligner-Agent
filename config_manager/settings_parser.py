@@ -132,6 +132,19 @@ FORZA_SETTING_OPTIONS: Dict[str, List[str]] = {
     QUICK_PRESET: ["—", "Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
 }
 
+F1_SETTING_OPTIONS: Dict[str, List[str]] = {
+    RESOLUTION: ["—", "1280x720", "1920x1080", "2560x1440", "3840x2160"],
+    SCREEN_MODE: ["—", "Fullscreen", "Borderless Windowed", "Windowed"],
+    VSYNC: ["—", "On", "Off"],
+    FRAME_LIMIT: ["—", "30 FPS", "60 FPS", "120 FPS", "144 FPS", "Unlimited"],
+    UPSCALING: [
+        "—", "Off", "FSR3 (Quality)", "FSR3 (Balanced)",
+        "FSR3 (Performance)", "FSR3 (Ultra Performance)",
+        "XeSS (Quality)", "XeSS (Balanced)", "XeSS (Performance)",
+        "XeSS (Ultra Quality)",
+    ],
+}
+
 FORZA_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
     "Very Low": {"CarLOD": "0", "EnvStreamingTex": "0", "GeometryQuality": "0", "ReflectionQuality": "0", "SSRQuality": "0", "RTReflectionQuality": "0", "ShadowQuality": "0", "NightShadows": "0", "SSGIQuality": "0", "RTGIQuality": "0", "ShaderQuality": "0", "AudioQuality": "0", "DeformableSnowQuality": "0", "ParticlesSettings": "0", "VolumetricFogQuality": "0", "LensEffects": "0", "MotionBlurQuality": "0"},
     "Low": {"CarLOD": "0", "EnvStreamingTex": "0", "GeometryQuality": "1", "ReflectionQuality": "1", "SSRQuality": "1", "RTReflectionQuality": "0", "ShadowQuality": "1", "NightShadows": "0", "SSGIQuality": "0", "RTGIQuality": "0", "ShaderQuality": "1", "AudioQuality": "1", "DeformableSnowQuality": "0", "ParticlesSettings": "1", "VolumetricFogQuality": "1", "LensEffects": "1", "MotionBlurQuality": "0"},
@@ -203,6 +216,8 @@ F1_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
 
 
 def setting_options_for_game(game_name: str, key: str) -> List[str]:
+    if "f1" in game_name.casefold() and "25" in game_name.casefold() and key in F1_SETTING_OPTIONS:
+        return F1_SETTING_OPTIONS[key]
     if "forza horizon 6" in game_name.casefold() and key in FORZA_SETTING_OPTIONS:
         return FORZA_SETTING_OPTIONS[key]
     return SETTING_OPTIONS.get(key, ["—"])

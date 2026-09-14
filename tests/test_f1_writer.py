@@ -40,6 +40,14 @@ def test_writes_resolution_screen_mode_vsync_and_frame_limit(tmp_path):
     assert 'frameRateLimiterValue="60"' in content
 
 
+def test_writes_resolution_for_registered_f1_name(tmp_path):
+    result, content = _write(tmp_path, {"resolution": "1280x720"})
+
+    assert result[0]["status"] == "ok"
+    assert 'width="1280"' in content
+    assert 'height="720"' in content
+
+
 def test_writes_fsr_quality(tmp_path):
     result, content = _write(tmp_path, {"upscaling": "FSR3 (Quality)"})
 
