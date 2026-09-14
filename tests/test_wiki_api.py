@@ -144,6 +144,41 @@ class TestPCGamingWikiPersistence:
 
         assert client.download_state("Any Game") == "no_decision"
 
+    def test_new_game_download_does_not_query_or_replace_cached_game(self, tmp_path, monkeypatch):
+        import json
+
+        cache_path = tmp_path / "wiki-cache.json"
+        consent_path = tmp_path / "wiki-consent.json"
+        cache_path.write_text(
+            json.dumps({
+                "Installed Game": {
+                    "page_title": "Installed Game",
+                    "raw_paths": ["cached-path"],
+                }
+            }),
+            encoding="utf-8",
+        )
+        client = PCGamingWikiClient(
+            cache_path=str(cache_path), consent_path=str(consent_path)
+        )
+        queried = []
+        monkeypatch.setattr(
+            client,
+            "_query_cargo_raw",
+            lambda title, **kwargs: queried.append(title) or (["new-path"], ["expanded"]),
+        )
+        client.set_download_decision("New Game", "accepted")
+
+        cached = client.get_config_info("Installed Game", allow_download=False)
+        downloaded = client.get_config_info("New Game", allow_download=False)
+
+        assert cached["raw_paths"] == ["cached-path"]
+        assert downloaded["raw_paths"] == ["new-path"]
+        assert queried == ["New Game"]
+        persisted = json.loads(cache_path.read_text(encoding="utf-8"))
+        assert persisted["Installed Game"]["raw_paths"] == ["cached-path"]
+        assert persisted["New Game"]["raw_paths"] == ["new-path"]
+
 
 class TestPCGamingWikiClientGetConfigInfo:
     def test_get_config_info_returns_dict(self, monkeypatch):

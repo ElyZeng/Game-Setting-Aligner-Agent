@@ -770,12 +770,15 @@ class App:
 
                     row = rows_by_name.get(game_name)
                     if row is not None:
-                        self.root.after(0, row.update_config_status, result)
-                        if settings is not None:
-                            self.root.after(0, row.update_key_settings, settings)
-                        if config_dicts:
-                            self.root.after(0, row.update_config_dicts, config_dicts)
-                        self.root.after(0, row.update_verification, verification)
+                        self.root.after(
+                            0,
+                            self._apply_detection_result,
+                            row,
+                            result,
+                            settings,
+                            config_dicts,
+                            verification,
+                        )
 
             # All done – update status bar back to a simple count
             self.root.after(
@@ -785,6 +788,24 @@ class App:
             )
 
         threading.Thread(target=_run_all, daemon=True).start()
+
+    def _apply_detection_result(
+        self,
+        row: GameRow,
+        result: Any,
+        settings: Optional[Dict[str, Any]],
+        config_dicts: List[Dict[str, Any]],
+        verification: Dict[str, Any],
+    ) -> None:
+        """Apply a background result only if its row belongs to the latest scan."""
+        if row not in self._game_rows:
+            return
+        row.update_config_status(result)
+        if settings is not None:
+            row.update_key_settings(settings)
+        if config_dicts:
+            row.update_config_dicts(config_dicts)
+        row.update_verification(verification)
 
     # ------------------------------------------------------------------
     # Actions
@@ -811,9 +832,15 @@ class App:
             return None
 
         count = len(candidates)
+        candidate_names = [getattr(game, "name", str(game)) for game in candidates]
+        displayed_names = candidate_names[:8]
+        game_list = "\n".join(f"- {name}" for name in displayed_names)
+        if count > len(displayed_names):
+            game_list += f"\n- and {count - len(displayed_names)} more"
         accepted = messagebox.askyesno(
             "PCGamingWiki Data",
             f"Download PCGamingWiki configuration data for {count} detected game(s)?\n\n"
+            f"{game_list}\n\n"
             "This data helps locate local game settings. Choosing No keeps scanning "
             "offline, and you can retry later with the Wiki Data button.",
         )
