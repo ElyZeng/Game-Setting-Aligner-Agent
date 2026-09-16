@@ -228,6 +228,30 @@ DisplayMode154_Height=1050
 
 
 class TestF1Parser:
+    def test_registered_scanner_name_uses_f1_parser(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <ssrt quality="2" />
+  <lighting quality="1" />
+  <shadows sampling="1" />
+  <weather_effects proceduralCloudQuality="1" />
+  <texture_streaming sizeInMiB="1024" />
+  <particles enabled="true" distanceScale="1.0" high="false" />
+  <vehicle_reflections envMapScale="1.0" />
+  <ground_cover enabled="true" />
+  <frame_gen mode="0" />
+  <multi_frame_gen value="0" />
+</hardware_settings_config>"""
+
+        result = extract_key_settings(
+            "F1® 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["quick_preset"] == "Medium"
+        assert result["frame_generation"] == "Off"
+
     def test_f1_options_include_upscaling_quality_modes(self):
         from config_manager.settings_parser import UPSCALING, setting_options_for_game
 
@@ -658,15 +682,15 @@ class TestF1PresetInference:
         [
             (
                 "Ultra Low",
-                '<ssrt quality="0"/><lighting quality="0"/><shadows sampling="1" skyShadowMapSize="512"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="256"/><particles enabled="false"/><vehicle_reflections envMapScale="0.25"/><ground_cover enabled="false"/>',
+                '<ssrt quality="0"/><lighting quality="0"/><shadows sampling="1" skyShadowMapSize="512"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="256"/><particles enabled="false" high="true"/><vehicle_reflections envMapScale="0.25"/><ground_cover enabled="false"/>',
             ),
             (
                 "Low",
-                '<ssrt quality="0"/><lighting quality="0"/><shadows sampling="1" skyShadowMapSize="1024"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="512"/><particles enabled="true" distanceScale="3.0"/><vehicle_reflections envMapScale="0.5"/>',
+                '<ssrt quality="0"/><lighting quality="0"/><shadows sampling="1" skyShadowMapSize="1024"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="512"/><particles enabled="true" distanceScale="3.0" high="false"/><vehicle_reflections envMapScale="0.5"/>',
             ),
             (
                 "Medium",
-                '<ssrt quality="2"/><lighting quality="1"/><shadows sampling="1"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="1024"/><particles enabled="true" distanceScale="1.0"/><vehicle_reflections envMapScale="1.0"/><ground_cover enabled="true"/>',
+                '<ssrt quality="2"/><lighting quality="1"/><shadows sampling="1"/><weather_effects proceduralCloudQuality="1"/><texture_streaming sizeInMiB="1024"/><particles enabled="true" distanceScale="1.0" high="false"/><vehicle_reflections envMapScale="1.0"/><ground_cover enabled="true"/>',
             ),
         ],
     )
@@ -689,6 +713,7 @@ class TestF1PresetInference:
   <shadows sampling="2" />
     <weather_effects proceduralCloudQuality="1" />
     <texture_streaming sizeInMiB="1536" />
+    <particles high="true" />
     <rt_pathtrace enabled="false" />
 </hardware_settings_config>"""
         result = extract_key_settings(
@@ -707,6 +732,7 @@ class TestF1PresetInference:
   <shadows sampling="3" />
     <weather_effects proceduralCloudQuality="1" />
     <texture_streaming sizeInMiB="2048" />
+    <particles high="true" />
     <rt_pathtrace enabled="false" />
 </hardware_settings_config>"""
         result = extract_key_settings(
@@ -725,6 +751,7 @@ class TestF1PresetInference:
   <shadows sampling="3" />
   <weather_effects proceduralCloudQuality="1" />
   <texture_streaming sizeInMiB="2048" />
+    <particles high="true" />
   <rt_pathtrace enabled="true" />
 </hardware_settings_config>"""
         result = extract_key_settings(
@@ -733,6 +760,52 @@ class TestF1PresetInference:
         )
 
         assert result["quick_preset"] == "Ultra Max"
+
+    def test_frame_generation_makes_matching_base_preset_custom(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <ssrt quality="0" />
+  <lighting quality="0" />
+  <shadows sampling="1" skyShadowMapSize="512" />
+  <weather_effects proceduralCloudQuality="1" />
+  <texture_streaming sizeInMiB="256" />
+  <particles enabled="false" high="true" />
+  <vehicle_reflections envMapScale="0.25" />
+  <ground_cover enabled="false" />
+  <frame_gen mode="3" />
+  <multi_frame_gen value="0" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["quick_preset"] == "Custom (Ultra Low)"
+        assert result["frame_generation"] == "AMD FSR3"
+
+    def test_frame_generation_preserves_medium_base_preset_name(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<hardware_settings_config>
+  <ssrt quality="2" />
+  <lighting quality="1" />
+  <shadows sampling="1" />
+  <weather_effects proceduralCloudQuality="1" />
+  <texture_streaming sizeInMiB="1024" />
+  <particles enabled="true" distanceScale="1.0" high="false" />
+  <vehicle_reflections envMapScale="1.0" />
+  <ground_cover enabled="true" />
+  <frame_gen mode="4" />
+  <multi_frame_gen value="0" />
+</hardware_settings_config>"""
+        result = extract_key_settings(
+            "F1 25",
+            [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
+        )
+
+        assert result["quick_preset"] == "Custom (Medium)"
+        assert result["frame_generation"] == "XeFG"
 
 
 class TestGameSpecificUnrealParsers:

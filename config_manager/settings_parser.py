@@ -144,6 +144,7 @@ F1_SETTING_OPTIONS: Dict[str, List[str]] = {
         "XeSS (Ultra Quality)",
     ],
     FRAME_GENERATION: ["—", "Off", "AMD FSR3", "XeFG"],
+    QUICK_PRESET: ["—", "Ultra Low", "Low", "Medium", "High", "Ultra High", "Ultra Max"],
 }
 
 FORZA_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
@@ -163,6 +164,7 @@ F1_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
         "weather_effects.proceduralCloudQuality": "1",
         "texture_streaming.sizeInMiB": "256",
         "particles.enabled": "false",
+        "particles.high": "true",
         "shadows.skyShadowMapSize": "512",
         "vehicle_reflections.envMapScale": "0.25",
         "ground_cover.enabled": "false",
@@ -175,6 +177,7 @@ F1_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
         "texture_streaming.sizeInMiB": "512",
         "particles.enabled": "true",
         "particles.distanceScale": "3.0",
+        "particles.high": "false",
         "shadows.skyShadowMapSize": "1024",
         "vehicle_reflections.envMapScale": "0.5",
     },
@@ -186,6 +189,7 @@ F1_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
         "texture_streaming.sizeInMiB": "1024",
         "particles.enabled": "true",
         "particles.distanceScale": "1.0",
+        "particles.high": "false",
         "vehicle_reflections.envMapScale": "1.0",
         "ground_cover.enabled": "true",
     },
@@ -195,6 +199,7 @@ F1_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
         "shadows.sampling": "2",
         "weather_effects.proceduralCloudQuality": "1",
         "texture_streaming.sizeInMiB": "1536",
+        "particles.high": "true",
         "rt_pathtrace.enabled": "false",
     },
     "Ultra High": {
@@ -794,6 +799,7 @@ def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
         ("texture_streaming", "sizeInMiB"),
         ("particles", "enabled"),
         ("particles", "distanceScale"),
+        ("particles", "high"),
         ("shadows", "skyShadowMapSize"),
         ("vehicle_reflections", "envMapScale"),
         ("ground_cover", "enabled"),
@@ -806,6 +812,10 @@ def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
                 value = value.lower()
             quality_values.append(value)
             quality_options[f"{node_name}.{attribute}"] = value
+    frame_generation_active = not (
+        frame_gen_value in {"0", "", "off"}
+        and multi_frame_value in {"0", "", "off"}
+    )
     preset_name = next(
         (
             name for name, signature in F1_PRESET_SIGNATURES.items()
@@ -813,7 +823,9 @@ def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
         ),
         None,
     )
-    if preset_name:
+    if preset_name and frame_generation_active:
+        r[QUICK_PRESET] = f"Custom ({preset_name})"
+    elif preset_name:
         r[QUICK_PRESET] = preset_name
     elif len(set(quality_values)) > 1:
         r[QUICK_PRESET] = "Custom"
@@ -1043,7 +1055,7 @@ def extract_key_settings(
     if "forza" in name_lower:
         return _parse_forza_xml(_content_for("UserConfigSelections"))
 
-    if name_lower in {"f1 25", "f1® 25"} or "f1 25" in name_lower:
+    if "f1" in name_lower and "25" in name_lower:
         return _parse_f1_xml(_content_for("hardware_settings_config.xml"))
 
     for cfg in readable:

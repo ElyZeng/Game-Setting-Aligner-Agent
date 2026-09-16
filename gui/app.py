@@ -381,15 +381,21 @@ class GameRow:
                 f"Errors writing settings for {self.game_name}:\n{msg}",
             )
         elif ok_count > 0:
-            # Update the display labels to show the new values
-            for key, val in changes.items():
+            refreshed_config_dicts = []
+            for config_file in self._config_dicts:
+                path = str(config_file.get("expanded_path", ""))
+                if path and os.path.isfile(path) and config_file.get("type") != "registry":
+                    refreshed_config_dicts.append(_try_read_file(path))
+                else:
+                    refreshed_config_dicts.append(config_file)
+            self._config_dicts = refreshed_config_dicts
+            refreshed_settings = extract_key_settings(self.game_name, refreshed_config_dicts)
+            self._key_settings = refreshed_settings
+            for key, val in refreshed_settings.items():
                 if key in self._setting_labels:
                     self._setting_labels[key].configure(
                         text=val, text_color=("#1a8a4a", "#5af0a0")
                     )
-                # Update internal state
-                if self._key_settings:
-                    self._key_settings[key] = val
             messagebox.showinfo(
                 "Applied",
                 f"Settings applied for {self.game_name} ({ok_count} file(s) updated).",

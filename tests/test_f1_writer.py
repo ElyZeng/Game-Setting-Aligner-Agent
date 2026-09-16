@@ -12,6 +12,14 @@ F1_XML = """<hardware_settings_config>
   <aa_quality value="1" />
     <frame_gen mode="0" />
     <multi_frame_gen value="0" />
+    <ssrt enabled="true" quality="4" />
+    <lighting quality="3" />
+    <shadows enabled="true" skyShadowMapSize="2048" sampling="3" />
+    <weather_effects proceduralCloudQuality="1" />
+    <texture_streaming sizeInMiB="2048" />
+    <particles enabled="true" distanceScale="1.0" rate="1.0" high="true" />
+    <vehicle_reflections envMapScale="2.0" />
+    <ground_cover enabled="true" />
 </hardware_settings_config>"""
 
 
@@ -74,6 +82,17 @@ def test_writes_frame_generation_on_for_registered_f1_name(tmp_path):
 
     assert result[0]["status"] == "ok"
     assert '<frame_gen mode="4"' in content
+
+
+def test_writes_ultra_low_preset_signature(tmp_path):
+    result, content = _write(tmp_path, {"quick_preset": "Ultra Low"})
+
+    assert result[0]["status"] == "ok"
+    assert '<ssrt enabled="true" quality="0" />' in content
+    assert '<lighting quality="0"' in content
+    assert '<shadows enabled="true" skyShadowMapSize="512"' in content
+    assert '<texture_streaming sizeInMiB="256"' in content
+    assert '<particles enabled="false" distanceScale="1.0" rate="1.0" high="true" />' in content
 
 
 def test_f1_frame_generation_auto_switches_fullscreen_to_windowed():

@@ -106,6 +106,41 @@ def test_f1_rejects_frame_generation_with_fullscreen_before_write(tmp_path):
     assert writes == []
 
 
+def test_f1_accepts_custom_base_preset_when_frame_generation_is_enabled(tmp_path):
+    registry = VerificationRegistry("0.08.3", data_dir=tmp_path)
+    registry.enable_test_writes()
+    config_files = [{"expanded_path": "hardware_settings_config.xml", "content": "<hardware_settings_config/>"}]
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate",
+        "reason": "verified",
+        "rule": {},
+    }
+
+    def write_and_make_custom(*_args):
+        return [{"path": "hardware_settings_config.xml", "status": "ok"}]
+
+    from config_manager import verification as verification_module
+    original_extract = verification_module.extract_key_settings
+    verification_module.extract_key_settings = lambda *_args: {
+        "quick_preset": "Custom (Medium)",
+        "frame_generation": "AMD FSR3",
+    }
+    try:
+        result = backup_and_write(
+            "F1® 25",
+            "Steam",
+            "1,0,141,2878",
+            config_files,
+            {"quick_preset": "Medium", "frame_generation": "AMD FSR3"},
+            write_and_make_custom,
+            registry,
+        )
+    finally:
+        verification_module.extract_key_settings = original_extract
+
+    assert result[0]["status"] == "ok"
+
+
 def test_structural_fingerprint_ignores_setting_values():
     one = structural_fingerprint([{"expanded_path": "GameUserSettings.ini", "content": "VSync=True\n"}])
     two = structural_fingerprint([{"expanded_path": "GameUserSettings.ini", "content": "VSync=False\n"}])

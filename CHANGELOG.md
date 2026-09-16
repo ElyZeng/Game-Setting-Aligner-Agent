@@ -1,5 +1,19 @@
 # Changelog
 
+# v0.08.5 (2026-09-16)
+
+### Fixed
+- F1 25 parser now reports `Custom (BasePreset)` when Frame Generation is enabled over a recognized base preset.
+- Apply now refreshes the visible settings from the actual written config instead of displaying raw dropdown values.
+- F1 25 Quick Preset is included in the guarded write rule and writer flow.
+- F1 25 parser dispatch handles the registered `F1® 25` scanner name consistently.
+
+### Validation
+- Full test suite: 252 passed.
+- Real GUI validation confirmed `Custom (Medium)` after applying Medium with Frame Generation enabled.
+
+---
+
 # v0.08.4 (2026-09-14)
 
 ### Fixed

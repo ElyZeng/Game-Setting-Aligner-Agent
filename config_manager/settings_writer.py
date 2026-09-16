@@ -23,6 +23,7 @@ from .settings_parser import (
     FRAME_GENERATION,
     _parse_ini_kv,
     FORZA_PRESET_SIGNATURES,
+    F1_PRESET_SIGNATURES,
 )
 QUICK_PRESET = "quick_preset"
 
@@ -345,6 +346,12 @@ def _write_forza_xml(
 def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
     """Patch F1 25 hardware settings XML without changing unrelated nodes."""
     result = content
+
+    preset = settings.get(QUICK_PRESET)
+    if preset in F1_PRESET_SIGNATURES:
+        for field, value in F1_PRESET_SIGNATURES[preset].items():
+            node_name, attribute = field.split(".", 1)
+            result = _replace_xml_attr(result, node_name, attribute, value)
 
     resolution = settings.get(RESOLUTION)
     if resolution and "x" in resolution:

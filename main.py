@@ -9,7 +9,7 @@ Run this script to launch the GUI application::
 import sys
 import os
 
-__version__ = "0.08.4"
+__version__ = "0.08.5"
 
 # Ensure the project root is on the path so that all submodules are importable
 _ROOT = os.path.dirname(os.path.abspath(__file__))

@@ -43,7 +43,8 @@
       "screen_mode",
       "vsync",
       "frame_limit",
-      "upscaling"
+      "upscaling",
+      "quick_preset"
     ],
     "reader_id": "f1-xml-parser",
     "writer_id": "f1-xml-writer"

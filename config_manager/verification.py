@@ -467,7 +467,14 @@ def backup_and_write(
         except OSError:
             pass
     parsed = extract_key_settings(game, reread)
-    valid = all(str(parsed.get(key)) == str(value) for key, value in expected.items())
+    def _setting_matches(key: str, expected_value: Any) -> bool:
+        actual_value = str(parsed.get(key))
+        expected_text = str(expected_value)
+        if key == "quick_preset" and game.lower().find("f1") >= 0 and game.lower().find("25") >= 0:
+            return actual_value in {expected_text, f"Custom ({expected_text})"}
+        return actual_value == expected_text
+
+    valid = all(_setting_matches(key, value) for key, value in expected.items())
     if not valid:
         for path, content in originals:
             path.write_text(content, encoding="utf-8")
