@@ -253,14 +253,17 @@ class TestF1Parser:
         assert result["frame_generation"] == "Off"
 
     def test_f1_options_include_upscaling_quality_modes(self):
-        from config_manager.settings_parser import UPSCALING, setting_options_for_game
+        from config_manager.settings_parser import UPSCALING, UPSCALING_MODE, setting_options_for_game
 
-        options = setting_options_for_game("F1® 25", UPSCALING)
+        methods = setting_options_for_game("F1® 25", UPSCALING)
+        fsr_modes = setting_options_for_game("F1® 25", UPSCALING_MODE, upscaling_method="FSR")
+        xess_modes = setting_options_for_game("F1® 25", UPSCALING_MODE, upscaling_method="XeSS")
 
-        assert "FSR3 (Quality)" in options
-        assert "FSR3 (Ultra Performance)" in options
-        assert "XeSS (Balanced)" in options
-        assert "XeSS (Ultra Quality)" in options
+        assert "FSR" in methods
+        assert "XeSS" in methods
+        assert "Ultra Performance" in fsr_modes
+        assert "Balanced" in xess_modes
+        assert "Ultra Quality" in xess_modes
 
     def test_parse_hardware_settings_config(self):
         from config_manager.settings_parser import extract_key_settings
@@ -298,7 +301,8 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "XeSS (Balanced)"
+        assert result["upscaling"] == "XeSS"
+        assert result["upscaling_mode"] == "Balanced"
 
     def test_parse_xess_quality(self):
         from config_manager.settings_parser import extract_key_settings
@@ -312,7 +316,8 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "XeSS (Quality)"
+        assert result["upscaling"] == "XeSS"
+        assert result["upscaling_mode"] == "Quality"
 
     def test_parse_xess_performance_quality(self):
         from config_manager.settings_parser import extract_key_settings
@@ -326,7 +331,8 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "XeSS (Performance)"
+        assert result["upscaling"] == "XeSS"
+        assert result["upscaling_mode"] == "Performance"
 
     def test_parse_xess_ultra_quality(self):
         from config_manager.settings_parser import extract_key_settings
@@ -340,7 +346,8 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "XeSS (Ultra Quality)"
+        assert result["upscaling"] == "XeSS"
+        assert result["upscaling_mode"] == "Ultra Quality"
 
     def test_parse_fsr3_ultra_performance(self):
         from config_manager.settings_parser import extract_key_settings
@@ -354,7 +361,8 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "FSR (Ultra Performance)"
+        assert result["upscaling"] == "FSR"
+        assert result["upscaling_mode"] == "Ultra Performance"
 
     def test_parse_fsr3_performance(self):
         from config_manager.settings_parser import extract_key_settings
@@ -368,7 +376,8 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "FSR (Performance)"
+        assert result["upscaling"] == "FSR"
+        assert result["upscaling_mode"] == "Performance"
 
     def test_parse_fsr3_balanced(self):
         from config_manager.settings_parser import extract_key_settings
@@ -382,7 +391,8 @@ class TestF1Parser:
             [{"found": True, "content": content, "expanded_path": "hardware_settings_config.xml"}],
         )
 
-        assert result["upscaling"] == "FSR (Balanced)"
+        assert result["upscaling"] == "FSR"
+        assert result["upscaling_mode"] == "Balanced"
 
     @pytest.mark.parametrize(
         ("mode", "expected"),
@@ -568,7 +578,8 @@ class TestForzaWriter:
             [{"found": True, "content": content, "expanded_path": "UserConfigSelections"}],
         )
 
-        assert result["upscaling"] == "XeSS Quality"
+        assert result["upscaling"] == "XeSS"
+        assert result["upscaling_mode"] == "Quality"
 
     def test_forza_reads_xess_ultra_performance(self):
         from config_manager.settings_parser import extract_key_settings
@@ -576,7 +587,8 @@ class TestForzaWriter:
         content = '<UserConfig Version="52"><selections><option id="XeSSMode" value="6" /></selections></UserConfig>'
         result = extract_key_settings("Forza Horizon 6", [{"found": True, "content": content, "expanded_path": "UserConfigSelections"}])
 
-        assert result["upscaling"] == "XeSS Ultra Performance"
+        assert result["upscaling"] == "XeSS"
+        assert result["upscaling_mode"] == "Ultra Performance"
 
     def test_forza_reads_fsr_quality_names(self):
         from config_manager.settings_parser import extract_key_settings
@@ -587,7 +599,8 @@ class TestForzaWriter:
             [{"found": True, "content": content, "expanded_path": "UserConfigSelections"}],
         )
 
-        assert result["upscaling"] == "FSR Ultra Performance"
+        assert result["upscaling"] == "FSR"
+        assert result["upscaling_mode"] == "Ultra Performance"
 
     def test_forza_infers_high_preset_from_captured_signature(self):
         from config_manager.settings_parser import extract_key_settings
@@ -809,6 +822,112 @@ class TestF1PresetInference:
 
 
 class TestGameSpecificUnrealParsers:
+    def test_parse_black_myth_retail_keeps_explicit_windowed_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1600
+ResolutionSizeY=900
+LastUserConfirmedResolutionSizeX=1600
+LastUserConfirmedResolutionSizeY=900
+FullscreenMode=2
+LastUserConfirmedDesiredScreenWidth=1600
+LastUserConfirmedDesiredScreenHeight=900
+UISettingData=(("ScreenMode", "2"),("ScreenRatio", "0"),("ScreenResolution", "1"),("WindowFullImageQuality", "0"),("ImageQuality", "1080"))
+"""
+
+        result = extract_key_settings(
+            "Black Myth: Wukong",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["resolution"] == "1600x900"
+        assert result["screen_mode"] == "Windowed"
+
+    def test_parse_black_myth_retail_keeps_explicit_borderless_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1600
+ResolutionSizeY=900
+LastUserConfirmedResolutionSizeX=1600
+LastUserConfirmedResolutionSizeY=900
+FullscreenMode=1
+LastUserConfirmedDesiredScreenWidth=1600
+LastUserConfirmedDesiredScreenHeight=900
+UISettingData=(("ScreenMode", "1"),("ScreenRatio", "0"),("ScreenResolution", "1"),("ImageQuality", "1080"))
+"""
+
+        result = extract_key_settings(
+            "Black Myth: Wukong",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["resolution"] == "1600x900"
+        assert result["screen_mode"] == "Borderless Windowed"
+
+    def test_black_myth_benchmark_options_match_game_capabilities(self):
+        from config_manager.settings_parser import setting_options_for_game
+
+        game = "Black Myth: Wukong Benchmark Tool"
+
+        assert setting_options_for_game(game, "screen_mode") == [
+            "—", "Borderless Windowed", "Windowed",
+        ]
+        assert setting_options_for_game(game, "upscaling") == [
+            "—", "TSR", "FSR", "XeSS",
+        ]
+        assert setting_options_for_game(game, "frame_generation", upscaling_method="TSR") == [
+            "—", "Off", "On",
+        ]
+        assert setting_options_for_game(game, "frame_generation", upscaling_method="FSR") == [
+            "—", "Off", "On",
+        ]
+        assert setting_options_for_game(game, "frame_generation", upscaling_method="XeSS") == ["—"]
+
+    def test_parse_black_myth_benchmark_borderless_uses_effective_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedResolutionSizeX=1600
+LastUserConfirmedResolutionSizeY=900
+LastUserConfirmedDesiredScreenWidth=1516
+LastUserConfirmedDesiredScreenHeight=853
+UISettingData=(("ImageQuality", "853"),("ScreenMode", "1"),("ScreenRatio", "2"),("ScreenResolution", "1"),("WindowFullImageQuality", "833333"),("Vsync", "1"),("SuperResolutionSampling", "3"),("InsertFrame", "1"),("QualityLevel", "5"))
+"""
+
+        result = extract_key_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["resolution"] == "1600x900"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["upscaling"] == "XeSS"
+        assert result["frame_generation"] == "N/A"
+        assert result["quick_preset"] == "Cinematic"
+
+    def test_parse_black_myth_benchmark_windowed_uses_confirmed_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedResolutionSizeX=1280
+LastUserConfirmedResolutionSizeY=720
+UISettingData=(("ScreenMode", "2"),("ScreenResolution", "0"))
+"""
+
+        result = extract_key_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["resolution"] == "1280x720"
+
     def test_parse_black_myth_benchmark_uses_confirmed_resolution(self):
         from config_manager.settings_parser import extract_key_settings
 
@@ -818,7 +937,7 @@ ResolutionSizeY=2160
 FullscreenMode=1
 LastUserConfirmedDesiredScreenWidth=1920
 LastUserConfirmedDesiredScreenHeight=1080
-UISettingData=((\"ScreenMode\", \"1\"),(\"ScreenRatio\", \"2\"),(\"ScreenResolution\", \"1\"),(\"Vsync\", \"0\"),(\"Dlss\", \"1\"),(\"SuperResolutionSampling\", \"1\"),(\"InsertFrame\", \"0\"),(\"QualityLevel\", \"3\"))
+UISettingData=((\"ScreenMode\", \"2\"),(\"ScreenRatio\", \"2\"),(\"ScreenResolution\", \"1\"),(\"Vsync\", \"0\"),(\"Dlss\", \"1\"),(\"SuperResolutionSampling\", \"1\"),(\"InsertFrame\", \"0\"),(\"QualityLevel\", \"3\"))
 """
 
         result = extract_key_settings(
@@ -872,7 +991,8 @@ CurrentSelectedFrameGenerationMode=1
             [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
         )
 
-        assert result["upscaling"] == "XeSS (mode 5)"
+        assert result["upscaling"] == "XeSS"
+        assert result["upscaling_mode"] == "5"
         assert result["frame_generation"] == "On (mode 1)"
         assert result["quick_preset"] == "Medium"
 

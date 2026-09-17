@@ -24,7 +24,8 @@
       "screen_mode",
       "vsync",
       "frame_limit",
-      "upscaling"
+      "upscaling",
+      "upscaling_mode"
     ],
     "reader_id": "existing-parser",
     "writer_id": "forza-xml-writer"
@@ -44,9 +45,31 @@
       "vsync",
       "frame_limit",
       "upscaling",
+      "upscaling_mode",
       "quick_preset"
     ],
     "reader_id": "f1-xml-parser",
     "writer_id": "f1-xml-writer"
+  },
+  {
+    "game": "Cyberpunk 2077",
+    "platform": "Steam",
+    "version": "2.31",
+    "fingerprint": "de78972efb64b071ca96467ccba148dc3337e51ef48249ce9a5f14e690578a8f",
+    "status": "write_candidate",
+    "config_patterns": [
+      "%USERPROFILE%/AppData/Local/CD Projekt Red/Cyberpunk 2077/UserSettings.json"
+    ],
+    "supported_settings": [
+      "resolution",
+      "screen_mode",
+      "vsync",
+      "frame_limit",
+      "upscaling",
+      "upscaling_mode",
+      "quick_preset"
+    ],
+    "reader_id": "cyberpunk-json-parser",
+    "writer_id": "cyberpunk-json-writer"
   }
 ]

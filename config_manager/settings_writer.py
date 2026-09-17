@@ -1,6 +1,6 @@
 """Write modified key settings back to game config files.
 
-Reverses the parsing done by ``settings_parser`` — takes a dict of the 7 key
+Reverses the parsing done by ``settings_parser`` — takes a dict of the 9 key
 settings and patches the original config file content in-place, then writes
 it back to disk.
 """
@@ -295,15 +295,30 @@ def _write_unreal_ini(
 
     # Upscaling
     val = settings.get(UPSCALING)
+    mode = settings.get(UPSCALING_MODE)
+    current_values = _parse_ini_kv(result)
+    current_method = current_values.get("CurrentSelectedUpscaler") or current_values.get("ResolutionScalingMethod", "")
+    target_method = val or current_method
     if val is not None:
         if val == "Off":
             result = _replace_ini_value(result, "ResolutionScalingMethod", "")
         elif "DLSS" in val:
+            target_method = "DLSS"
             result = _replace_ini_value(result, "ResolutionScalingMethod", "DLSS")
         elif "FSR" in val:
+            target_method = "FSR"
             result = _replace_ini_value(result, "ResolutionScalingMethod", "FSR")
         elif "XeSS" in val:
+            target_method = "XeSS"
             result = _replace_ini_value(result, "ResolutionScalingMethod", "XeSS")
+        if "CurrentSelectedUpscaler" in current_values and val != "Off":
+            result = _replace_ini_value(result, "CurrentSelectedUpscaler", target_method)
+    if mode is not None and target_method != "Off":
+        mode_key = {"DLSS": "DLSSMode", "FSR": "FSRMode", "XeSS": "XeSSMode"}.get(target_method)
+        if mode_key:
+            result = _replace_ini_value(result, mode_key, mode)
+        if "CurrentSelectedUpscalerQualityMode" in current_values:
+            result = _replace_ini_value(result, "CurrentSelectedUpscalerQualityMode", mode)
 
     # Frame Generation
     val = settings.get(FRAME_GENERATION)
@@ -380,25 +395,41 @@ def _write_forza_xml(
 
     # Upscaling
     val = settings.get(UPSCALING)
-    if val is not None:
+    mode = settings.get(UPSCALING_MODE)
+    if val and mode is None:
+        if val.startswith("XeSS "):
+            val, mode = "XeSS", val.removeprefix("XeSS ")
+        elif val.startswith("FSR "):
+            val, mode = "FSR", val.removeprefix("FSR ")
+    current_options = dict(re.findall(r'<option\s+id="([^"]+)"\s+value="([^"]*)"', result))
+    if val is not None or mode is not None:
         if val == "Off":
             result = _replace_xml_option(result, "XeSSMode", "0")
             result = _replace_xml_option(result, "DLSSMode", "0")
             result = _replace_xml_option(result, "FSR3Mode", "0")
-        elif "XeSS" in val:
-            xess_map = {"XeSS Ultra Quality Plus": "1", "XeSS Ultra Quality": "2", "XeSS Quality": "3", "XeSS Balanced": "4", "XeSS Performance": "5", "XeSS Ultra Performance": "6"}
-            result = _replace_xml_option(result, "XeSSMode", xess_map.get(val, "1"))
-            result = _replace_xml_option(result, "DLSSMode", "0")
-            result = _replace_xml_option(result, "FSR3Mode", "0")
-        elif "DLSS" in val:
-            result = _replace_xml_option(result, "DLSSMode", "1")
-            result = _replace_xml_option(result, "XeSSMode", "0")
-            result = _replace_xml_option(result, "FSR3Mode", "0")
-        elif "FSR" in val:
-            fsr_map = {"FSR Quality": "1", "FSR Balance": "2", "FSR Performance": "3", "FSR Ultra Performance": "4"}
-            result = _replace_xml_option(result, "FSR3Mode", fsr_map.get(val, "1"))
-            result = _replace_xml_option(result, "XeSSMode", "0")
-            result = _replace_xml_option(result, "DLSSMode", "0")
+        else:
+            current_method = next((method for method, key in (("XeSS", "XeSSMode"), ("DLSS", "DLSSMode"), ("FSR", "FSR3Mode")) if current_options.get(key, "0") != "0"), "")
+            target_method = val or current_method
+            mode_maps = {
+                "XeSS": {"Ultra Quality Plus": "1", "Ultra Quality": "2", "Quality": "3", "Balanced": "4", "Performance": "5", "Ultra Performance": "6"},
+                "DLSS": {"Preset 1": "1"},
+                "FSR": {"Quality": "1", "Balance": "2", "Balanced": "2", "Performance": "3", "Ultra Performance": "4"},
+            }
+            option_keys = {"XeSS": "XeSSMode", "DLSS": "DLSSMode", "FSR": "FSR3Mode"}
+            option_key = option_keys.get(target_method)
+            if option_key:
+                current_value = current_options.get(option_key, "0")
+                target_value = mode_maps[target_method].get(mode or "", current_value if current_value != "0" else "1")
+                result = _replace_xml_option(result, option_key, target_value)
+            if val == "XeSS":
+                result = _replace_xml_option(result, "DLSSMode", "0")
+                result = _replace_xml_option(result, "FSR3Mode", "0")
+            elif val == "DLSS":
+                result = _replace_xml_option(result, "XeSSMode", "0")
+                result = _replace_xml_option(result, "FSR3Mode", "0")
+            elif val == "FSR":
+                result = _replace_xml_option(result, "XeSSMode", "0")
+                result = _replace_xml_option(result, "DLSSMode", "0")
 
     # Frame Generation
     val = settings.get(FRAME_GENERATION)
@@ -451,18 +482,23 @@ def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
                 result = _replace_xml_attr(result, "resolution", "frameRateLimiterValue", str(fps))
 
     upscaling = settings.get(UPSCALING)
-    if upscaling is not None:
-        quality = upscaling.rsplit("(", 1)[-1].rstrip(") ") if "(" in upscaling else ""
+    upscaling_mode = settings.get(UPSCALING_MODE)
+    if upscaling is not None or upscaling_mode is not None:
+        quality = upscaling_mode or (upscaling.rsplit("(", 1)[-1].rstrip(") ") if upscaling and "(" in upscaling else "")
         quality_map = {"Quality": "0", "Balanced": "1", "Performance": "2", "Ultra Quality": "4", "Ultra Performance": "3"}
         quality_value = quality_map.get(quality)
-        if "FSR" in upscaling:
+        if upscaling and "FSR" in upscaling:
             result = _replace_xml_attr(result, "antialiasing", "dlss", "false")
             result = _replace_xml_attr(result, "antialiasing", "fsr3", "1")
             result = _replace_xml_attr(result, "antialiasing", "xess", "false")
-        elif "XeSS" in upscaling:
+        elif upscaling and "XeSS" in upscaling:
             result = _replace_xml_attr(result, "antialiasing", "dlss", "false")
             result = _replace_xml_attr(result, "antialiasing", "fsr3", "0")
             result = _replace_xml_attr(result, "antialiasing", "xess", "true")
+        elif upscaling == "DLSS":
+            result = _replace_xml_attr(result, "antialiasing", "dlss", "true")
+            result = _replace_xml_attr(result, "antialiasing", "fsr3", "0")
+            result = _replace_xml_attr(result, "antialiasing", "xess", "false")
         elif upscaling == "Off":
             result = _replace_xml_attr(result, "antialiasing", "dlss", "false")
             result = _replace_xml_attr(result, "antialiasing", "fsr3", "0")
@@ -545,6 +581,11 @@ def _write_registry_json(
             if k in val:
                 gfx["UpscaleMethod"] = v
                 break
+    mode = settings.get(UPSCALING_MODE)
+    if mode is not None and "UpscaleQuality" in gfx:
+        quality_map = {"Ultra Performance": 0, "Performance": 1, "Balanced": 2, "Quality": 3, "Ultra Quality": 4}
+        if mode in quality_map:
+            gfx["UpscaleQuality"] = quality_map[mode]
 
     # Frame Generation
     val = settings.get(FRAME_GENERATION)
@@ -590,6 +631,19 @@ def _write_cs2_video(
     if val is not None:
         result = _replace_valve_kv_value(
             result, "setting.mat_vsync_mode", "1" if val == "On" else "0"
+        )
+
+    # Upscaling
+    method = settings.get(UPSCALING)
+    mode = settings.get(UPSCALING_MODE)
+    mode_map = {"Ultra Quality": "1", "Quality": "2", "Balanced": "3", "Performance": "4"}
+    if method == "Off":
+        result = _replace_valve_kv_value(result, "setting.videocfg_fsr_detail", "0")
+    elif method == "FSR" or mode is not None:
+        result = _replace_valve_kv_value(
+            result,
+            "setting.videocfg_fsr_detail",
+            mode_map.get(mode or "", "1"),
         )
 
     return result
@@ -658,7 +712,7 @@ def write_settings(
         The list of config file dicts (with ``expanded_path``, ``content``,
         ``found``, etc.) — same format as what the exporter produces.
     settings:
-        Dict of the 7 key settings with their new values.
+        Dict of the 9 key settings with their new values.
         Only settings with non-None values will be written.
 
     Returns

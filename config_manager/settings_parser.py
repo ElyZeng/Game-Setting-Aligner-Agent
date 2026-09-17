@@ -1,14 +1,15 @@
 """Parse key graphics settings from game config file content.
 
-Extracts 8 standardised settings from various config formats:
+Extracts 9 standardised settings from various config formats:
 1. Resolution
 2. Screen Mode
 3. V-Sync
 4. Frame Limit
 5. Dynamic Resolution
-6. Upscaling (DLSS / FSR / XeSS)
-7. Frame Generation / Multi Frame Generation
-8. Quick Preset
+6. Upscaling Method (DLSS / FSR / XeSS)
+7. Upscaling Mode (Quality / Balanced / Performance, etc.)
+8. Frame Generation / Multi Frame Generation
+9. Quick Preset
 """
 
 from __future__ import annotations
@@ -110,11 +111,24 @@ SETTING_OPTIONS: Dict[str, List[str]] = {
     UPSCALING: [
         "—",
         "Off",
-        "XeSS",
         "DLSS",
         "FSR",
+        "XeSS",
+        "TSR",
+        "CAS",
     ],
-    UPSCALING_MODE: ["—"],
+    UPSCALING_MODE: [
+        "—",
+        "Auto",
+        "Native AA",
+        "Ultra Quality Plus",
+        "Ultra Quality",
+        "Quality",
+        "Balanced",
+        "Performance",
+        "Ultra Performance",
+        "Dynamic",
+    ],
     FRAME_GENERATION: [
         "—",
         "Off",
@@ -129,11 +143,7 @@ SETTING_OPTIONS: Dict[str, List[str]] = {
 FORZA_SETTING_OPTIONS: Dict[str, List[str]] = {
     SCREEN_MODE: ["—", "Fullscreen", "Windowed"],
     FRAME_LIMIT: ["—", "20 FPS", "30 FPS", "60 FPS", "Unlimited"],
-    UPSCALING: [
-        "—", "Off", "FSR Quality", "FSR Balance", "FSR Performance",
-        "FSR Ultra Performance", "XeSS Ultra Quality Plus", "XeSS Ultra Quality",
-        "XeSS Quality", "XeSS Balanced", "XeSS Performance", "XeSS Ultra Performance",
-    ],
+    UPSCALING: ["—", "Off", "DLSS", "FSR", "XeSS"],
     QUICK_PRESET: ["—", "Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
 }
 
@@ -142,12 +152,7 @@ F1_SETTING_OPTIONS: Dict[str, List[str]] = {
     SCREEN_MODE: ["—", "Fullscreen", "Borderless Windowed", "Windowed"],
     VSYNC: ["—", "On", "Off"],
     FRAME_LIMIT: ["—", "30 FPS", "60 FPS", "120 FPS", "144 FPS", "Unlimited"],
-    UPSCALING: [
-        "—", "Off", "FSR3 (Quality)", "FSR3 (Balanced)",
-        "FSR3 (Performance)", "FSR3 (Ultra Performance)",
-        "XeSS (Quality)", "XeSS (Balanced)", "XeSS (Performance)",
-        "XeSS (Ultra Quality)",
-    ],
+    UPSCALING: ["—", "Off", "DLSS", "FSR", "XeSS"],
     FRAME_GENERATION: ["—", "Off", "AMD FSR3", "XeFG"],
     QUICK_PRESET: ["—", "Ultra Low", "Low", "Medium", "High", "Ultra High", "Ultra Max"],
 }
@@ -302,10 +307,49 @@ def setting_options_for_game(
     refresh_rate: Optional[int] = None,
     upscaling_method: Optional[str] = None,
 ) -> List[str]:
-    if "f1" in game_name.casefold() and "25" in game_name.casefold() and key in F1_SETTING_OPTIONS:
-        return F1_SETTING_OPTIONS[key]
-    if "forza horizon 6" in game_name.casefold() and key in FORZA_SETTING_OPTIONS:
-        return FORZA_SETTING_OPTIONS[key]
+    name = game_name.casefold()
+    if "black myth" in name or "wukong" in name:
+        if "benchmark" in name and key == SCREEN_MODE:
+            return ["—", "Borderless Windowed", "Windowed"]
+        if "benchmark" in name and key == UPSCALING:
+            return ["—", "TSR", "FSR", "XeSS"]
+        if key == UPSCALING_MODE:
+            return ["—"]
+        if key == FRAME_GENERATION:
+            return ["—", "Off", "On"] if upscaling_method in {"TSR", "FSR"} else ["—"]
+    if "street fighter" in name or "streetfighter" in name:
+        if key == UPSCALING_MODE:
+            return ["—"]
+    if "counter-strike" in name or "cs2" in name:
+        if key == UPSCALING:
+            return ["—", "Off", "FSR"]
+        if key == UPSCALING_MODE:
+            return ["—", "Ultra Quality", "Quality", "Balanced", "Performance"] if upscaling_method == "FSR" else ["—"]
+    if "horizon zero dawn" in name or "shadow of the tomb raider" in name:
+        if key == UPSCALING:
+            return ["—", "Off", "DLSS", "FSR", "CAS", "XeSS"]
+        if key == UPSCALING_MODE:
+            return ["—", "Ultra Performance", "Performance", "Balanced", "Quality", "Ultra Quality"] if upscaling_method not in {None, "Off"} else ["—"]
+    if "f1" in name and "25" in name:
+        if key == UPSCALING_MODE:
+            modes = {
+                "DLSS": ["Quality", "Balanced", "Performance", "Ultra Quality"],
+                "FSR": ["Quality", "Balanced", "Performance", "Ultra Performance"],
+                "XeSS": ["Quality", "Balanced", "Performance", "Ultra Quality"],
+            }
+            return ["—", *modes.get(upscaling_method or "", [])]
+        if key in F1_SETTING_OPTIONS:
+            return F1_SETTING_OPTIONS[key]
+    if "forza horizon 6" in name:
+        if key == UPSCALING_MODE:
+            modes = {
+                "DLSS": ["Preset 1"],
+                "FSR": ["Quality", "Balanced", "Performance", "Ultra Performance"],
+                "XeSS": ["Ultra Quality Plus", "Ultra Quality", "Quality", "Balanced", "Performance", "Ultra Performance"],
+            }
+            return ["—", *modes.get(upscaling_method or "", [])]
+        if key in FORZA_SETTING_OPTIONS:
+            return FORZA_SETTING_OPTIONS[key]
     if "cyberpunk" in game_name.casefold():
         detected_resolution, detected_refresh = desktop_display_mode()
         if key == SCREEN_MODE:
@@ -497,20 +541,38 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     return r
 
 
-def _parse_black_myth(content: str) -> Dict[str, Optional[str]]:
+def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Optional[str]]:
     """Parse Black Myth: Wukong's Unreal config and UISettingData tuple."""
     r = _parse_unreal_ini(content)
     ui_values = dict(re.findall(r'\("([^"]+)",\s*"([^"]*)"\)', content))
 
     ini_values = _parse_ini_kv(content)
-    confirmed_width = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenWidth"))
-    confirmed_height = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenHeight"))
+    borderless = benchmark and ui_values.get("ScreenMode") == "1"
+    if borderless:
+        base_width = _parse_positive_int(ini_values.get("ResolutionSizeX"))
+        base_height = _parse_positive_int(ini_values.get("ResolutionSizeY"))
+        window_scale = _parse_positive_int(ui_values.get("WindowFullImageQuality"))
+        if base_width is not None and base_height is not None and window_scale is not None:
+            confirmed_width = (base_width * window_scale + 500_000) // 1_000_000
+            confirmed_height = (base_height * window_scale + 500_000) // 1_000_000
+        else:
+            confirmed_width = None
+            confirmed_height = None
+    elif benchmark:
+        confirmed_width = _parse_positive_int(ini_values.get("LastUserConfirmedResolutionSizeX"))
+        confirmed_height = _parse_positive_int(ini_values.get("LastUserConfirmedResolutionSizeY"))
+    else:
+        confirmed_width = None
+        confirmed_height = None
+    if not borderless and (confirmed_width is None or confirmed_height is None):
+        confirmed_width = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenWidth"))
+        confirmed_height = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenHeight"))
     if confirmed_width is not None and confirmed_height is not None:
         r[RESOLUTION] = f"{confirmed_width}x{confirmed_height}"
 
     image_quality = ui_values.get("ImageQuality")
     screen_ratio = ui_values.get("ScreenRatio")
-    if image_quality and screen_ratio == "0":
+    if not benchmark and r[RESOLUTION] is None and image_quality and screen_ratio == "0":
         try:
             height = int(image_quality)
             standard_heights = (720, 900, 1080, 1440, 2160)
@@ -545,17 +607,19 @@ def _parse_black_myth(content: str) -> Dict[str, Optional[str]]:
 
     super_resolution = ui_values.get("SuperResolutionSampling")
     if super_resolution is not None:
-        r[UPSCALING] = {
-            "0": "Off",
-            "1": "XeSS",
-        }.get(super_resolution, f"Super Resolution (mode {super_resolution})")
+        mapping = {"3": "XeSS"} if benchmark else {"0": "Off", "1": "XeSS"}
+        r[UPSCALING] = mapping.get(super_resolution, f"Super Resolution (mode {super_resolution})")
+        r[UPSCALING_MODE] = "N/A"
 
     insert_frame = ui_values.get("InsertFrame")
     if insert_frame is not None:
-        r[FRAME_GENERATION] = {
-            "0": "Off",
-            "1": "Auto",
-        }.get(insert_frame, f"Mode {insert_frame}")
+        if benchmark and r[UPSCALING] == "XeSS":
+            r[FRAME_GENERATION] = "N/A"
+        else:
+            r[FRAME_GENERATION] = {
+                "0": "Off",
+                "1": "Auto",
+            }.get(insert_frame, f"Mode {insert_frame}")
 
     r[DYNAMIC_RESOLUTION] = "N/A"
 
@@ -647,10 +711,12 @@ def _parse_unreal_ini(content: str) -> Dict[str, Optional[str]]:
     xess = kv.get("XeSSMode", "")
     if selected_upscaler:
         quality_mode = kv.get("CurrentSelectedUpscalerQualityMode", "")
-        r[UPSCALING] = f"{selected_upscaler} (mode {quality_mode})" if quality_mode else selected_upscaler
+        r[UPSCALING] = selected_upscaler
+        r[UPSCALING_MODE] = quality_mode or "N/A"
     elif method:
         quality = {"DLSS": dlss, "FSR": fsr, "XeSS": xess}.get(method, "")
-        r[UPSCALING] = f"{method} ({quality})" if quality else method
+        r[UPSCALING] = method
+        r[UPSCALING_MODE] = quality or "N/A"
 
     # Frame Generation
     dlss_fg = kv.get("DLSSFrameGenerationMode", "")
@@ -717,6 +783,7 @@ def _parse_sf6(content: str) -> Dict[str, Optional[str]]:
     upscale = kv.get("UpscaleType")
     if upscale is not None:
         r[UPSCALING] = "Off" if upscale.lower() in {"none", "off", "0"} else upscale
+        r[UPSCALING_MODE] = "N/A"
 
     # This config has no explicit frame-generation switch.
     r[FRAME_GENERATION] = "N/A"
@@ -769,16 +836,20 @@ def _parse_forza_xml(content: str) -> Dict[str, Optional[str]]:
     dlss_sel = _sel_val("DLSSMode")
     fsr3_sel = _sel_val("FSR3Mode")
     xess_sel = _sel_val("XeSSMode")
-    active = []
     if xess_sel and xess_sel != "0":
-        xess_map = {"1": "XeSS Ultra Quality Plus", "2": "XeSS Ultra Quality", "3": "XeSS Quality", "4": "XeSS Balanced", "5": "XeSS Performance", "6": "XeSS Ultra Performance"}
-        active.append(xess_map.get(xess_sel, f"XeSS (preset {xess_sel})"))
-    if dlss_sel and dlss_sel != "0":
-        active.append(f"DLSS (preset {dlss_sel})")
-    if fsr3_sel and fsr3_sel != "0":
-        fsr_map = {"1": "FSR Quality", "2": "FSR Balance", "3": "FSR Performance", "4": "FSR Ultra Performance"}
-        active.append(fsr_map.get(fsr3_sel, f"FSR3 (preset {fsr3_sel})"))
-    r[UPSCALING] = ", ".join(active) if active else "Off"
+        xess_map = {"1": "Ultra Quality Plus", "2": "Ultra Quality", "3": "Quality", "4": "Balanced", "5": "Performance", "6": "Ultra Performance"}
+        r[UPSCALING] = "XeSS"
+        r[UPSCALING_MODE] = xess_map.get(xess_sel, f"Preset {xess_sel}")
+    elif dlss_sel and dlss_sel != "0":
+        r[UPSCALING] = "DLSS"
+        r[UPSCALING_MODE] = f"Preset {dlss_sel}"
+    elif fsr3_sel and fsr3_sel != "0":
+        fsr_map = {"1": "Quality", "2": "Balanced", "3": "Performance", "4": "Ultra Performance"}
+        r[UPSCALING] = "FSR"
+        r[UPSCALING_MODE] = fsr_map.get(fsr3_sel, f"Preset {fsr3_sel}")
+    else:
+        r[UPSCALING] = "Off"
+        r[UPSCALING_MODE] = "N/A"
 
     # Forza exposes frame generation through the selected upscaler (for
     # example FSR 3.1.5), not as an independent graphics setting.
@@ -878,14 +949,18 @@ def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
         }
         if dlss:
             r[UPSCALING] = "DLSS"
+            r[UPSCALING_MODE] = quality_names.get(str(quality_value), f"Mode {quality_value}")
         elif fsr3 not in {"0", "", "false", "off"}:
             quality = fsr_quality_names.get(str(quality_value))
-            r[UPSCALING] = f"FSR ({quality})" if quality else f"FSR ({fsr3})"
+            r[UPSCALING] = "FSR"
+            r[UPSCALING_MODE] = quality or f"Mode {quality_value}"
         elif xess:
             quality = quality_names.get(str(quality_value))
-            r[UPSCALING] = f"XeSS ({quality})" if quality else "XeSS"
+            r[UPSCALING] = "XeSS"
+            r[UPSCALING_MODE] = quality or f"Mode {quality_value}"
         else:
             r[UPSCALING] = "Off"
+            r[UPSCALING_MODE] = "N/A"
 
     frame_gen = find_node("frame_gen")
     multi_frame_gen = find_node("multi_frame_gen")
@@ -1020,16 +1095,18 @@ def _parse_registry_json(content: str, game_hint: str = "") -> Dict[str, Optiona
         quality_map = {0: "Ultra Performance", 1: "Performance", 2: "Balanced", 3: "Quality", 4: "Ultra Quality"}
         m = method_map.get(um, f"Method {um}")
         q = quality_map.get(uq, "") if uq is not None else ""
-        r[UPSCALING] = f"{m} ({q})" if q else m
+        r[UPSCALING] = m
+        r[UPSCALING_MODE] = q if m != "Off" and q else "N/A"
     elif dlss is not None or xess is not None:
-        parts = []
         if xess and xess != 0:
-            parts.append("XeSS: On")
-        if dlss and dlss != 0:
-            parts.append("DLSS: On")
-        if cas and cas != 0:
-            parts.append("CAS: On")
-        r[UPSCALING] = ", ".join(parts) if parts else "Off"
+            r[UPSCALING] = "XeSS"
+        elif dlss and dlss != 0:
+            r[UPSCALING] = "DLSS"
+        elif cas and cas != 0:
+            r[UPSCALING] = "CAS"
+        else:
+            r[UPSCALING] = "Off"
+        r[UPSCALING_MODE] = "N/A"
 
     # Frame Generation
     fg = gfx.get("FrameGen")
@@ -1110,7 +1187,8 @@ def _parse_cs2(all_configs: List[Dict[str, Any]]) -> Dict[str, Optional[str]]:
     fsr = video_kv.get("setting.videocfg_fsr_detail")
     if fsr is not None:
         fsr_map = {"0": "Off", "1": "Ultra Quality", "2": "Quality", "3": "Balanced", "4": "Performance"}
-        r[UPSCALING] = f"FSR ({fsr_map.get(fsr, fsr)})" if fsr != "0" else "Off"
+        r[UPSCALING] = "FSR" if fsr != "0" else "Off"
+        r[UPSCALING_MODE] = fsr_map.get(fsr, f"Mode {fsr}") if fsr != "0" else "N/A"
 
     # CS2 has no Dynamic Resolution, Frame Generation, or Quick Preset
     r[DYNAMIC_RESOLUTION] = "N/A"
@@ -1126,7 +1204,7 @@ def extract_key_settings(
     game_name: str,
     config_files: List[Dict[str, Any]],
 ) -> Dict[str, Optional[str]]:
-    """Extract the 8 key graphics settings from a game's config files.
+    """Extract the 9 key graphics settings from a game's config files.
 
     Parameters
     ----------
@@ -1166,7 +1244,10 @@ def extract_key_settings(
         return _parse_cyberpunk(_content_for("UserSettings.json"))
 
     if "black myth" in name_lower or "wukong" in name_lower:
-        return _parse_black_myth(_content_for("GameUserSettings.ini"))
+        return _parse_black_myth(
+            _content_for("GameUserSettings.ini"),
+            benchmark="benchmark" in name_lower,
+        )
 
     if "clair obscur" in name_lower or "expedition 33" in name_lower:
         return _parse_expedition_33(_content_for("GameUserSettings.ini"))
