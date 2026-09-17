@@ -1,5 +1,21 @@
 # Changelog
 
+# v0.08.7 (2026-09-17)
+
+### Fixed
+- Black Myth: Wukong Benchmark Tool now derives borderless output resolution from its base resolution and window scaling value.
+- Black Myth: Wukong now preserves explicit display resolution instead of replacing it with image-quality data.
+- Upscaling is consistently represented as separate Method and Mode settings across parsers, writers, the GUI, CLI, and HTTP API.
+- F1 25 and Forza Horizon 6 verification rules now authorize the separate `upscaling_mode` setting.
+- The reviewed rule source retains all current writable candidates: Cyberpunk 2077, F1 25, and Forza Horizon 6.
+
+### Validation
+- Full test suite: 305 passed.
+- Every selectable upscaling Method/Mode combination for the three writable candidates passed writer-to-parser round-trip tests.
+- The Windows x64 release archive and verification manifest checksums were validated.
+
+---
+
 # v0.08.6 (2026-09-17)
 
 ### Fixed
