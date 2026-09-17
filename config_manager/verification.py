@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 MANIFEST_FORMAT_VERSION = 1
 STATUSES = frozenset({"candidate", "read_verified", "write_candidate", "write_verified", "deprecated"})
-DEFAULT_RELEASE_API = "https://api.github.com/repos/ElyZeng/Game-Tuner-POC/releases/latest"
+DEFAULT_RELEASE_API = "https://api.github.com/repos/ElyZeng/Game-Setting-Aligner-Agent/releases/latest"
 OFFLINE_BUNDLE_FILES = frozenset({"verified-games.json", "verified-games.json.sha256"})
 MAX_OFFLINE_MANIFEST_BYTES = 5 * 1024 * 1024
 _BUILTIN_GAMES = (
