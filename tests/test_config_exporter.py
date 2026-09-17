@@ -809,6 +809,68 @@ class TestF1PresetInference:
 
 
 class TestGameSpecificUnrealParsers:
+    def test_black_myth_benchmark_options_match_game_capabilities(self):
+        from config_manager.settings_parser import setting_options_for_game
+
+        game = "Black Myth: Wukong Benchmark Tool"
+
+        assert setting_options_for_game(game, "screen_mode") == [
+            "—", "Borderless Windowed", "Windowed",
+        ]
+        assert setting_options_for_game(game, "upscaling") == [
+            "—", "TSR", "FSR", "XeSS",
+        ]
+        assert setting_options_for_game(game, "frame_generation", upscaling_method="TSR") == [
+            "—", "Off", "On",
+        ]
+        assert setting_options_for_game(game, "frame_generation", upscaling_method="FSR") == [
+            "—", "Off", "On",
+        ]
+        assert setting_options_for_game(game, "frame_generation", upscaling_method="XeSS") == ["—"]
+
+    def test_parse_black_myth_benchmark_borderless_uses_effective_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedResolutionSizeX=1600
+LastUserConfirmedResolutionSizeY=900
+LastUserConfirmedDesiredScreenWidth=1516
+LastUserConfirmedDesiredScreenHeight=853
+UISettingData=(("ImageQuality", "853"),("ScreenMode", "1"),("ScreenRatio", "2"),("ScreenResolution", "1"),("WindowFullImageQuality", "833333"),("Vsync", "1"),("SuperResolutionSampling", "3"),("InsertFrame", "1"),("QualityLevel", "5"))
+"""
+
+        result = extract_key_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["resolution"] == "1600x900"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["upscaling"] == "XeSS"
+        assert result["frame_generation"] == "N/A"
+        assert result["quick_preset"] == "Cinematic"
+
+    def test_parse_black_myth_benchmark_windowed_uses_confirmed_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedResolutionSizeX=1280
+LastUserConfirmedResolutionSizeY=720
+UISettingData=(("ScreenMode", "2"),("ScreenResolution", "0"))
+"""
+
+        result = extract_key_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["resolution"] == "1280x720"
+
     def test_parse_black_myth_benchmark_uses_confirmed_resolution(self):
         from config_manager.settings_parser import extract_key_settings
 
@@ -818,7 +880,7 @@ ResolutionSizeY=2160
 FullscreenMode=1
 LastUserConfirmedDesiredScreenWidth=1920
 LastUserConfirmedDesiredScreenHeight=1080
-UISettingData=((\"ScreenMode\", \"1\"),(\"ScreenRatio\", \"2\"),(\"ScreenResolution\", \"1\"),(\"Vsync\", \"0\"),(\"Dlss\", \"1\"),(\"SuperResolutionSampling\", \"1\"),(\"InsertFrame\", \"0\"),(\"QualityLevel\", \"3\"))
+UISettingData=((\"ScreenMode\", \"2\"),(\"ScreenRatio\", \"2\"),(\"ScreenResolution\", \"1\"),(\"Vsync\", \"0\"),(\"Dlss\", \"1\"),(\"SuperResolutionSampling\", \"1\"),(\"InsertFrame\", \"0\"),(\"QualityLevel\", \"3\"))
 """
 
         result = extract_key_settings(

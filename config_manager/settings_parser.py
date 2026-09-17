@@ -302,6 +302,14 @@ def setting_options_for_game(
     refresh_rate: Optional[int] = None,
     upscaling_method: Optional[str] = None,
 ) -> List[str]:
+    name = game_name.casefold()
+    if "black myth" in name and "benchmark" in name:
+        if key == SCREEN_MODE:
+            return ["—", "Borderless Windowed", "Windowed"]
+        if key == UPSCALING:
+            return ["—", "TSR", "FSR", "XeSS"]
+        if key == FRAME_GENERATION:
+            return ["—", "Off", "On"] if upscaling_method in {"TSR", "FSR"} else ["—"]
     if "f1" in game_name.casefold() and "25" in game_name.casefold() and key in F1_SETTING_OPTIONS:
         return F1_SETTING_OPTIONS[key]
     if "forza horizon 6" in game_name.casefold() and key in FORZA_SETTING_OPTIONS:
@@ -497,20 +505,38 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     return r
 
 
-def _parse_black_myth(content: str) -> Dict[str, Optional[str]]:
+def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Optional[str]]:
     """Parse Black Myth: Wukong's Unreal config and UISettingData tuple."""
     r = _parse_unreal_ini(content)
     ui_values = dict(re.findall(r'\("([^"]+)",\s*"([^"]*)"\)', content))
 
     ini_values = _parse_ini_kv(content)
-    confirmed_width = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenWidth"))
-    confirmed_height = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenHeight"))
+    borderless = benchmark and ui_values.get("ScreenMode") == "1"
+    if borderless:
+        base_width = _parse_positive_int(ini_values.get("ResolutionSizeX"))
+        base_height = _parse_positive_int(ini_values.get("ResolutionSizeY"))
+        window_scale = _parse_positive_int(ui_values.get("WindowFullImageQuality"))
+        if base_width is not None and base_height is not None and window_scale is not None:
+            confirmed_width = (base_width * window_scale + 500_000) // 1_000_000
+            confirmed_height = (base_height * window_scale + 500_000) // 1_000_000
+        else:
+            confirmed_width = None
+            confirmed_height = None
+    elif benchmark:
+        confirmed_width = _parse_positive_int(ini_values.get("LastUserConfirmedResolutionSizeX"))
+        confirmed_height = _parse_positive_int(ini_values.get("LastUserConfirmedResolutionSizeY"))
+    else:
+        confirmed_width = None
+        confirmed_height = None
+    if not borderless and (confirmed_width is None or confirmed_height is None):
+        confirmed_width = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenWidth"))
+        confirmed_height = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenHeight"))
     if confirmed_width is not None and confirmed_height is not None:
         r[RESOLUTION] = f"{confirmed_width}x{confirmed_height}"
 
     image_quality = ui_values.get("ImageQuality")
     screen_ratio = ui_values.get("ScreenRatio")
-    if image_quality and screen_ratio == "0":
+    if not benchmark and image_quality and screen_ratio == "0":
         try:
             height = int(image_quality)
             standard_heights = (720, 900, 1080, 1440, 2160)
@@ -545,17 +571,18 @@ def _parse_black_myth(content: str) -> Dict[str, Optional[str]]:
 
     super_resolution = ui_values.get("SuperResolutionSampling")
     if super_resolution is not None:
-        r[UPSCALING] = {
-            "0": "Off",
-            "1": "XeSS",
-        }.get(super_resolution, f"Super Resolution (mode {super_resolution})")
+        mapping = {"3": "XeSS"} if benchmark else {"0": "Off", "1": "XeSS"}
+        r[UPSCALING] = mapping.get(super_resolution, f"Super Resolution (mode {super_resolution})")
 
     insert_frame = ui_values.get("InsertFrame")
     if insert_frame is not None:
-        r[FRAME_GENERATION] = {
-            "0": "Off",
-            "1": "Auto",
-        }.get(insert_frame, f"Mode {insert_frame}")
+        if benchmark and r[UPSCALING] == "XeSS":
+            r[FRAME_GENERATION] = "N/A"
+        else:
+            r[FRAME_GENERATION] = {
+                "0": "Off",
+                "1": "Auto",
+            }.get(insert_frame, f"Mode {insert_frame}")
 
     r[DYNAMIC_RESOLUTION] = "N/A"
 
@@ -1166,7 +1193,10 @@ def extract_key_settings(
         return _parse_cyberpunk(_content_for("UserSettings.json"))
 
     if "black myth" in name_lower or "wukong" in name_lower:
-        return _parse_black_myth(_content_for("GameUserSettings.ini"))
+        return _parse_black_myth(
+            _content_for("GameUserSettings.ini"),
+            benchmark="benchmark" in name_lower,
+        )
 
     if "clair obscur" in name_lower or "expedition 33" in name_lower:
         return _parse_expedition_33(_content_for("GameUserSettings.ini"))
