@@ -284,8 +284,16 @@ class GameRow:
                 and "25" in self.game_name.casefold()
                 and self._key_settings.get(SCREEN_MODE) == "Borderless Windowed"
             )
-            cyberpunk_mode = key == UPSCALING_MODE and "cyberpunk" in self.game_name.casefold()
-            if (value != "N/A" or cyberpunk_mode) and not borderless_resolution and is_setting_writable_for_game(self.game_name, key):
+            upscaling_mode_control = key == UPSCALING_MODE and any(
+                len(setting_options_for_game(
+                    self.game_name,
+                    UPSCALING_MODE,
+                    upscaling_method=method,
+                )) > 1
+                for method in setting_options_for_game(self.game_name, UPSCALING)[1:]
+                if method != "Off"
+            )
+            if (value != "N/A" or upscaling_mode_control) and not borderless_resolution and is_setting_writable_for_game(self.game_name, key):
                 options = setting_options_for_game(
                     self.game_name,
                     key,
@@ -320,7 +328,7 @@ class GameRow:
                 dropdown.grid(row=row, column=col + 2, sticky="w", padx=(2, 8), pady=1)
                 setting_menus[key] = dropdown
 
-                if key == UPSCALING and "cyberpunk" in self.game_name.casefold():
+                if key == UPSCALING:
                     def _update_upscaling_modes(method: str) -> None:
                         mode_menu = setting_menus.get(UPSCALING_MODE)
                         mode_var = self._setting_vars.get(UPSCALING_MODE)
@@ -593,7 +601,7 @@ class App:
         global_grid.pack(fill="x", padx=4, pady=(2, 6))
 
         self._global_vars: Dict[str, ctk.StringVar] = {}
-        global_keys = [key for key in ALL_KEYS if key != UPSCALING_MODE]
+        global_keys = list(ALL_KEYS)
         for i, key in enumerate(global_keys):
             col = (i % 4) * 2
             row = i // 4
@@ -1271,6 +1279,21 @@ class App:
             )
             return
 
+        def _is_applicable(row: GameRow, key: str, value: str) -> bool:
+            if not row._key_settings or row._key_settings.get(key) is None:
+                return False
+            if row._key_settings.get(key) == "N/A" and key != UPSCALING_MODE:
+                return False
+            if not is_setting_writable_for_game(row.game_name, key):
+                return False
+            method = global_changes.get(UPSCALING) or row._key_settings.get(UPSCALING)
+            return value in setting_options_for_game(
+                row.game_name,
+                key,
+                row._key_settings.get(key),
+                upscaling_method=method,
+            )
+
         # Find all games that support each changed setting
         applicable: List[GameRow] = []
         for row in self._game_rows:
@@ -1279,10 +1302,7 @@ class App:
             # Only apply settings that the game actually supports (not None, not N/A)
             game_applicable = {
                 k: v for k, v in global_changes.items()
-                if row._key_settings.get(k) is not None
-                and row._key_settings.get(k) != "N/A"
-                and is_setting_writable_for_game(row.game_name, k)
-                and v in setting_options_for_game(row.game_name, k, row._key_settings.get(k))
+                if _is_applicable(row, k, v)
             }
             if game_applicable:
                 applicable.append(row)
@@ -1314,11 +1334,7 @@ class App:
             # Only apply supported settings for this game
             game_changes = {
                 k: v for k, v in global_changes.items()
-                if row._key_settings
-                and row._key_settings.get(k) is not None
-                and row._key_settings.get(k) != "N/A"
-                and is_setting_writable_for_game(row.game_name, k)
-                and v in setting_options_for_game(row.game_name, k, row._key_settings.get(k))
+                if _is_applicable(row, k, v)
             }
             if not game_changes:
                 continue

@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
+from config_manager.settings_parser import ALL_KEYS, setting_options_for_game
 from config_manager.verification import (
     builtin_manifest,
     VerificationError,
@@ -13,6 +15,56 @@ from config_manager.verification import (
     backup_and_write,
     structural_fingerprint,
 )
+
+
+def _reviewed_rules():
+    rules_path = Path(__file__).resolve().parents[1] / "release-assets" / "forza-write-candidate-rules.json"
+    return json.loads(rules_path.read_text(encoding="utf-8"))
+
+
+def test_reviewed_writable_upscaling_rules_allow_method_and_mode():
+    for rule in _reviewed_rules():
+        if rule["status"] not in {"write_candidate", "write_verified"}:
+            continue
+        supported = set(rule["supported_settings"])
+        if supported & {"upscaling", "upscaling_mode"}:
+            assert {"upscaling", "upscaling_mode"} <= supported, rule["game"]
+
+
+def test_reviewed_rules_preserve_current_writable_games():
+    writable_games = {
+        rule["game"]
+        for rule in _reviewed_rules()
+        if rule["status"] in {"write_candidate", "write_verified"}
+    }
+    assert {"Cyberpunk 2077", "F1 25", "Forza Horizon 6"} <= writable_games
+
+
+def test_reviewed_rules_only_allow_known_unique_setting_keys():
+    for rule in _reviewed_rules():
+        supported = rule["supported_settings"]
+        assert len(supported) == len(set(supported)), rule["game"]
+        assert set(supported) <= set(ALL_KEYS), rule["game"]
+
+
+def test_reviewed_writable_settings_have_selectable_options():
+    for rule in _reviewed_rules():
+        if rule["status"] not in {"write_candidate", "write_verified"}:
+            continue
+        for key in rule["supported_settings"]:
+            if key == "upscaling_mode":
+                methods = setting_options_for_game(rule["game"], "upscaling")[1:]
+                assert any(
+                    len(setting_options_for_game(
+                        rule["game"], key, upscaling_method=method,
+                    )) > 1
+                    for method in methods
+                    if method != "Off"
+                ), rule["game"]
+            else:
+                assert len(setting_options_for_game(rule["game"], key)) > 1, (
+                    rule["game"], key
+                )
 
 
 class _Response:

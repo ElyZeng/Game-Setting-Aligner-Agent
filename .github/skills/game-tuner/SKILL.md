@@ -6,7 +6,7 @@ argument-hint: "Describe what you want to do with game settings (e.g., 'scan my 
 
 # Game Tuner Skill
 
-Manage PC game graphics settings via CLI. Supports scanning installed games, querying config file locations from PCGamingWiki, parsing 7 key graphics settings, and writing modifications back to disk.
+Manage PC game graphics settings via CLI. Supports scanning installed games, querying config file locations from PCGamingWiki, parsing 9 key graphics settings, and writing modifications back to disk.
 
 ## When to Use
 
@@ -80,7 +80,8 @@ python cli.py parse "Cyberpunk 2077"
 | `vsync` | V-Sync on/off |
 | `frame_limit` | FPS cap value |
 | `dynamic_resolution` | Dynamic resolution on/off |
-| `upscaling` | DLSS / FSR / XeSS mode |
+| `upscaling` | Upscaling method such as DLSS / FSR / XeSS |
+| `upscaling_mode` | Quality mode such as Quality / Balanced / Performance |
 | `frame_generation` | Frame generation on/off |
 
 ### 5. Apply Settings
