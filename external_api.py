@@ -27,6 +27,7 @@ from config_manager import (
     ConfigExporter,
     DISPLAY_NAMES_EN,
     SETTING_OPTIONS,
+    setting_options_for_game,
     _is_expanded_registry_path,
     _read_registry_key,
     _try_read_file,
@@ -139,7 +140,15 @@ class GameTunerAPIHandler(BaseHTTPRequestHandler):
                     {
                         "game": game,
                         "settings": settings,
-                        "available_options": SETTING_OPTIONS,
+                        "available_options": {
+                            key: setting_options_for_game(
+                                game,
+                                key,
+                                settings.get(key),
+                                upscaling_method=settings.get("upscaling"),
+                            )
+                            for key in SETTING_OPTIONS
+                        },
                         "setting_names": DISPLAY_NAMES_EN,
                     }
                 )

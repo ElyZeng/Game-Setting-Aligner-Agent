@@ -20,8 +20,10 @@ from .settings_parser import (
     FRAME_LIMIT,
     DYNAMIC_RESOLUTION,
     UPSCALING,
+    UPSCALING_MODE,
     FRAME_GENERATION,
     _parse_ini_kv,
+    desktop_display_mode,
     FORZA_PRESET_SIGNATURES,
     F1_PRESET_SIGNATURES,
 )
@@ -100,33 +102,73 @@ def _write_cyberpunk(
 
     groups = data.get("data", [])
 
-    def _set_option(opt_name: str, value: Any, group_prefix: str = "") -> None:
+    def _find_option(opt_name: str, group_prefix: str = "") -> Optional[Dict[str, Any]]:
         for group in groups:
             gname = group.get("group_name", "")
             if group_prefix and not gname.startswith(group_prefix):
                 continue
             for opt in group.get("options", []):
                 if opt["name"] == opt_name:
-                    opt["value"] = value
-                    return
+                    return opt
+        return None
+
+    def _set_option(opt_name: str, value: Any, group_prefix: str = "") -> None:
+        option = _find_option(opt_name, group_prefix)
+        if option is not None:
+            option["value"] = value
 
     # Resolution
     val = settings.get(RESOLUTION)
     if val and "x" in val:
+        val = val.split(" (", 1)[0]
+        resolution = _find_option("Resolution", "/video/display")
         _set_option("Resolution", val, "/video/display")
+        resolution_indexes = {"1920x1080": 16, "2560x1440": 21}
+        if resolution is not None and isinstance(resolution.get("value"), str) and val in resolution_indexes:
+            resolution["index"] = resolution_indexes[val]
 
     # Screen Mode
     val = settings.get(SCREEN_MODE)
     if val is not None:
-        mode_map = {"Fullscreen": 0, "Borderless Windowed": 1, "Windowed": 2}
+        window_mode = _find_option("WindowMode", "/video/display")
+        if window_mode is not None and isinstance(window_mode.get("value"), str):
+            mode_map = {
+                "Fullscreen": "Fullscreen",
+                "Borderless Windowed": "BorderlessWindowed",
+                "Windowed": "Windowed",
+            }
+            index_map = {"Windowed": 0, "Borderless Windowed": 1, "Fullscreen": 2}
+        else:
+            mode_map = {"Fullscreen": 0, "Borderless Windowed": 1, "Windowed": 2}
+            index_map = {}
         if val in mode_map:
             _set_option("WindowMode", mode_map[val], "/video/display")
+            if window_mode is not None and val in index_map:
+                window_mode["index"] = index_map[val]
 
     # VSync
     val = settings.get(VSYNC)
     if val is not None:
-        vs_val = "UI-Settings-Video-QualitySetting-On" if val == "On" else "UI-Settings-Video-QualitySetting-Off"
-        _set_option("VSync", vs_val, "/video/display")
+        vsync = _find_option("VSync", "/video/display")
+        current_value = str(vsync.get("value", "")) if vsync is not None else ""
+        current_index = vsync.get("index") if vsync is not None else None
+        inferred_refresh = None
+        if current_value.isdigit() and isinstance(current_index, int) and current_index > 0:
+            inferred_refresh = int(current_value) * current_index
+        _, detected_refresh = desktop_display_mode()
+        if inferred_refresh and detected_refresh and abs(inferred_refresh - detected_refresh) < 4:
+            refresh_rate = detected_refresh
+        else:
+            refresh_rate = inferred_refresh or detected_refresh
+        vsync_values = [refresh_rate // divisor for divisor in range(1, 5)] if refresh_rate else []
+        if val.isdigit() and int(val) in vsync_values:
+            _set_option("VSync", val, "/video/display")
+            if vsync is not None:
+                vsync["index"] = vsync_values.index(int(val)) + 1
+        elif val == "Off":
+            _set_option("VSync", "UI-Settings-Video-QualitySetting-Off", "/video/display")
+            if vsync is not None and "index" in vsync:
+                vsync["index"] = 0
 
     # Frame Limit
     val = settings.get(FRAME_LIMIT)
@@ -137,7 +179,10 @@ def _write_cyberpunk(
             _set_option("MaximumFPS_OnOff", True)
             try:
                 fps = int(val.replace(" FPS", ""))
-                _set_option("MaximumFPS", fps)
+                if _find_option("MaximumFPS_Value") is not None:
+                    _set_option("MaximumFPS_Value", fps)
+                else:
+                    _set_option("MaximumFPS", fps)
             except ValueError:
                 pass
 
@@ -148,15 +193,38 @@ def _write_cyberpunk(
 
     # Upscaling
     val = settings.get(UPSCALING)
-    if val is not None:
-        if val == "Off":
-            _set_option("ResolutionScaling", "Off")
-        elif "DLSS" in val:
-            _set_option("ResolutionScaling", "DLSS")
-        elif "FSR" in val:
-            _set_option("ResolutionScaling", "FSR2")
-        elif "XeSS" in val:
-            _set_option("ResolutionScaling", "XeSS")
+    mode = settings.get(UPSCALING_MODE)
+    if val is not None or mode is not None:
+        resolution_scaling = _find_option("ResolutionScaling", "/graphics/presets")
+        current_method = str(resolution_scaling.get("value", "Off")) if resolution_scaling else "Off"
+        method_values = {
+            "Off": ("Off", 0),
+            "FSR 2.1": ("FSR2", 1),
+            "FSR 3": ("FSR3", 2),
+            "XeSS": ("XeSS", 3),
+        }
+        stored_method, scaling_index = method_values.get(val or "", (current_method, None))
+        if val in method_values:
+            _set_option("ResolutionScaling", stored_method, "/graphics/presets")
+            if resolution_scaling is not None and "index" in resolution_scaling:
+                resolution_scaling["index"] = scaling_index
+
+        mode_values = {
+            "FSR2": ["Auto", "Quality", "Balanced", "Performance", "UltraPerformance"],
+            "FSR3": ["Auto", "NativeAA", "Quality", "Balanced", "Performance", "UltraPerformance", "Dynamic"],
+            "XeSS": ["Auto", "Ultra Quality Plus", "Ultra Quality", "Quality", "Balanced", "Performance", "Dynamic"],
+        }
+        stored_mode = {
+            "Native AA": "NativeAA",
+            "Ultra Performance": "UltraPerformance",
+        }.get(mode or "", mode)
+        target_modes = mode_values.get(stored_method, [])
+        if stored_mode in target_modes:
+            option_name = "XESS" if stored_method == "XeSS" else stored_method
+            mode_option = _find_option(option_name, "/graphics/presets")
+            _set_option(option_name, stored_mode, "/graphics/presets")
+            if mode_option is not None and "index" in mode_option:
+                mode_option["index"] = target_modes.index(stored_mode)
 
     # Frame Generation
     val = settings.get(FRAME_GENERATION)

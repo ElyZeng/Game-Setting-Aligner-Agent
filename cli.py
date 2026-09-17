@@ -88,7 +88,7 @@ def cmd_detect(args):
 
 
 def cmd_parse(args):
-    from config_manager import extract_key_settings, SETTING_OPTIONS, DISPLAY_NAMES_EN
+    from config_manager import extract_key_settings, SETTING_OPTIONS, DISPLAY_NAMES_EN, setting_options_for_game
 
     if args.config_json:
         with open(args.config_json, "r", encoding="utf-8") as f:
@@ -114,7 +114,15 @@ def cmd_parse(args):
     _json_out({
         "game": args.game,
         "settings": settings,
-        "available_options": SETTING_OPTIONS,
+        "available_options": {
+            key: setting_options_for_game(
+                args.game,
+                key,
+                settings.get(key),
+                upscaling_method=settings.get("upscaling"),
+            )
+            for key in SETTING_OPTIONS
+        },
         "setting_names": DISPLAY_NAMES_EN,
     })
 

@@ -27,6 +27,7 @@ VSYNC = "vsync"
 FRAME_LIMIT = "frame_limit"
 DYNAMIC_RESOLUTION = "dynamic_resolution"
 UPSCALING = "upscaling"
+UPSCALING_MODE = "upscaling_mode"
 FRAME_GENERATION = "frame_generation"
 QUICK_PRESET = "quick_preset"
 
@@ -37,6 +38,7 @@ ALL_KEYS = [
     FRAME_LIMIT,
     DYNAMIC_RESOLUTION,
     UPSCALING,
+    UPSCALING_MODE,
     FRAME_GENERATION,
     QUICK_PRESET,
 ]
@@ -49,6 +51,7 @@ DISPLAY_NAMES = {
     FRAME_LIMIT: "幀率限制",
     DYNAMIC_RESOLUTION: "動態解析度",
     UPSCALING: "升頻技術",
+    UPSCALING_MODE: "升頻模式",
     FRAME_GENERATION: "畫格生成",
     QUICK_PRESET: "畫質預設",
 }
@@ -59,7 +62,8 @@ DISPLAY_NAMES_EN = {
     VSYNC: "V-Sync",
     FRAME_LIMIT: "Frame Limit",
     DYNAMIC_RESOLUTION: "Dynamic Resolution",
-    UPSCALING: "Upscaling",
+    UPSCALING: "Upscaling Method",
+    UPSCALING_MODE: "Upscaling Mode",
     FRAME_GENERATION: "Frame Generation",
     QUICK_PRESET: "Quick Preset",
 }
@@ -110,6 +114,7 @@ SETTING_OPTIONS: Dict[str, List[str]] = {
         "DLSS",
         "FSR",
     ],
+    UPSCALING_MODE: ["—"],
     FRAME_GENERATION: [
         "—",
         "Off",
@@ -221,16 +226,120 @@ F1_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
 }
 
 
-def setting_options_for_game(game_name: str, key: str) -> List[str]:
+def _query_desktop_display_mode() -> tuple[Optional[str], Optional[int]]:
+    if os.name != "nt":
+        return None, None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class Point(ctypes.Structure):
+            _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+        class DevMode(ctypes.Structure):
+            _fields_ = [
+                ("dmDeviceName", wintypes.WCHAR * 32),
+                ("dmSpecVersion", wintypes.WORD),
+                ("dmDriverVersion", wintypes.WORD),
+                ("dmSize", wintypes.WORD),
+                ("dmDriverExtra", wintypes.WORD),
+                ("dmFields", wintypes.DWORD),
+                ("dmPosition", Point),
+                ("dmDisplayOrientation", wintypes.DWORD),
+                ("dmDisplayFixedOutput", wintypes.DWORD),
+                ("dmColor", wintypes.SHORT),
+                ("dmDuplex", wintypes.SHORT),
+                ("dmYResolution", wintypes.SHORT),
+                ("dmTTOption", wintypes.SHORT),
+                ("dmCollate", wintypes.SHORT),
+                ("dmFormName", wintypes.WCHAR * 32),
+                ("dmLogPixels", wintypes.WORD),
+                ("dmBitsPerPel", wintypes.DWORD),
+                ("dmPelsWidth", wintypes.DWORD),
+                ("dmPelsHeight", wintypes.DWORD),
+                ("dmDisplayFlags", wintypes.DWORD),
+                ("dmDisplayFrequency", wintypes.DWORD),
+                ("dmICMMethod", wintypes.DWORD),
+                ("dmICMIntent", wintypes.DWORD),
+                ("dmMediaType", wintypes.DWORD),
+                ("dmDitherType", wintypes.DWORD),
+                ("dmReserved1", wintypes.DWORD),
+                ("dmReserved2", wintypes.DWORD),
+                ("dmPanningWidth", wintypes.DWORD),
+                ("dmPanningHeight", wintypes.DWORD),
+            ]
+
+        mode = DevMode()
+        mode.dmSize = ctypes.sizeof(DevMode)
+        if ctypes.windll.user32.EnumDisplaySettingsW(None, -1, ctypes.byref(mode)):
+            resolution = f"{mode.dmPelsWidth}x{mode.dmPelsHeight}"
+            return resolution, int(mode.dmDisplayFrequency)
+    except (AttributeError, OSError, ValueError):
+        pass
+    return None, None
+
+
+def desktop_display_mode() -> tuple[Optional[str], Optional[int]]:
+    """Return the current primary desktop resolution and nominal refresh rate."""
+    return _query_desktop_display_mode()
+
+
+def _cyberpunk_vsync_options(refresh_rate: int) -> List[str]:
+    values = []
+    for divisor in range(1, 5):
+        value = refresh_rate // divisor
+        if value >= 30 and value not in values:
+            values.append(value)
+    return ["—", "Off", *(str(value) for value in values)]
+
+
+def setting_options_for_game(
+    game_name: str,
+    key: str,
+    current_value: Optional[str] = None,
+    *,
+    desktop_resolution: Optional[str] = None,
+    refresh_rate: Optional[int] = None,
+    upscaling_method: Optional[str] = None,
+) -> List[str]:
     if "f1" in game_name.casefold() and "25" in game_name.casefold() and key in F1_SETTING_OPTIONS:
         return F1_SETTING_OPTIONS[key]
     if "forza horizon 6" in game_name.casefold() and key in FORZA_SETTING_OPTIONS:
         return FORZA_SETTING_OPTIONS[key]
+    if "cyberpunk" in game_name.casefold():
+        detected_resolution, detected_refresh = desktop_display_mode()
+        if key == SCREEN_MODE:
+            return ["—", "Windowed", "Borderless Windowed"]
+        if key == RESOLUTION:
+            recommendation = desktop_resolution or detected_resolution
+            return [
+                f"{option} (recommended for proper scaling)" if option == recommendation else option
+                for option in ["—", "1920x1080", "2560x1440"]
+            ]
+        if key == VSYNC:
+            nominal_refresh = refresh_rate or detected_refresh
+            if nominal_refresh:
+                return _cyberpunk_vsync_options(nominal_refresh)
+        if key == FRAME_LIMIT:
+            return ["—", "Off", "30 FPS", "60 FPS", "120 FPS", "144 FPS", "240 FPS"]
+        if key == UPSCALING:
+            return ["—", "Off", "FSR 2.1", "FSR 3", "XeSS"]
+        if key == UPSCALING_MODE:
+            mode_options = {
+                "FSR 2.1": ["Auto", "Quality", "Balanced", "Performance", "Ultra Performance"],
+                "FSR 3": ["Auto", "Native AA", "Quality", "Balanced", "Performance", "Ultra Performance", "Dynamic"],
+                "XeSS": ["Auto", "Ultra Quality Plus", "Ultra Quality", "Quality", "Balanced", "Performance", "Dynamic"],
+            }
+            return ["—", *mode_options.get(upscaling_method or "", [])]
+        if key == QUICK_PRESET:
+            return QUICK_PRESET_OPTIONS["cyberpunk"]
     return SETTING_OPTIONS.get(key, ["—"])
 
 
 def is_setting_writable_for_game(game_name: str, key: str) -> bool:
     """Return whether the GUI should offer an Apply dropdown for this setting."""
+    if "cyberpunk" in game_name.casefold() and key in {DYNAMIC_RESOLUTION, FRAME_GENERATION}:
+        return False
     return True
 
 # Per-game Quick Preset option lists keyed by parser-type string.
@@ -295,9 +404,17 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
 
     # Screen Mode
     wm = options_map.get("WindowMode") or options_map.get("/video/display/WindowMode")
+    uses_current_schema = bool(wm and isinstance(wm.get("value"), str))
     if wm:
         mode = wm.get("value", "")
-        mode_map = {0: "Fullscreen", 1: "Borderless Windowed", 2: "Windowed"}
+        mode_map = {
+            0: "Fullscreen",
+            1: "Borderless Windowed",
+            2: "Windowed",
+            "Fullscreen": "Fullscreen",
+            "BorderlessWindowed": "Borderless Windowed",
+            "Windowed": "Windowed",
+        }
         r[SCREEN_MODE] = mode_map.get(mode, str(mode))
 
     # VSync
@@ -313,7 +430,7 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
 
     # Frame Limit
     fps_on = options_map.get("MaximumFPS_OnOff")
-    fps_val = options_map.get("MaximumFPS")
+    fps_val = options_map.get("MaximumFPS_Value") or options_map.get("MaximumFPS")
     if fps_on is not None:
         on = fps_on.get("value", False)
         limit = fps_val.get("value", "") if fps_val else ""
@@ -322,7 +439,9 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     # Dynamic Resolution
     drs = options_map.get("DynamicResolutionScaling")
     drs_fps = options_map.get("DRS_TargetFPS")
-    if drs is not None:
+    if uses_current_schema:
+        r[DYNAMIC_RESOLUTION] = "N/A"
+    elif drs is not None:
         on = drs.get("value", False)
         target = drs_fps.get("value", "") if drs_fps else ""
         r[DYNAMIC_RESOLUTION] = f"On (Target: {target} FPS)" if on else "Off"
@@ -331,11 +450,17 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     rs = options_map.get("ResolutionScaling")
     if rs:
         method = str(rs.get("value", "Off"))
-        quality = ""
+        display_method = {"FSR2": "FSR 2.1", "FSR3": "FSR 3"}.get(method, method)
         method_opt = options_map.get(method.upper()) or options_map.get(method)
-        if method_opt:
-            quality = f" ({method_opt.get('value', '')})"
-        r[UPSCALING] = f"{method}{quality}"
+        r[UPSCALING] = display_method
+        if method == "Off":
+            r[UPSCALING_MODE] = "N/A"
+        elif method_opt:
+            mode = str(method_opt.get("value", ""))
+            r[UPSCALING_MODE] = {
+                "NativeAA": "Native AA",
+                "UltraPerformance": "Ultra Performance",
+            }.get(mode, mode)
 
     # Frame Generation
     fg = options_map.get("FrameGeneration")

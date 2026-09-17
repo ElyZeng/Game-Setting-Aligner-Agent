@@ -1,5 +1,31 @@
 # Changelog
 
+# v0.08.6 (2026-09-17)
+
+### Fixed
+- Cyberpunk 2077 2.31 now reads string-based window modes correctly.
+- Cyberpunk writes preserve the current JSON schema and synchronize dynamic-list indexes for verified display modes and resolutions.
+- Cyberpunk VSync now exposes refresh-specific values such as `144`, `72`, `48`, and `36`, and writes their matching dynamic-list indexes.
+- Cyberpunk Screen Mode now matches the game UI by offering only Windowed and Borderless Windowed.
+- The active desktop resolution is labeled as recommended for proper window scaling.
+- VSync choices are generated from the active refresh rate, including non-144/60 Hz displays.
+- Dynamic Resolution and Frame Generation remain read-only until their current-version write semantics are verified.
+- Cyberpunk Quick Preset options are now exposed consistently by the GUI, CLI, and HTTP API.
+- Cyberpunk upscaling writes now synchronize the `ResolutionScaling` method and dynamic-list index.
+- Cyberpunk 2.31 guarded writes now allow method-level upscaling and Quick Preset testing with automatic read-back restore.
+- Cyberpunk FSR and XeSS dropdowns now expose their quality modes and synchronize each mode's value and dynamic-list index.
+- Cyberpunk upscaling read-back now validates the selected quality mode, not only the upscaling method.
+- Cyberpunk upscaling is now split into method and mode controls, distinguishing FSR 2.1, FSR 3, and XeSS.
+- Cyberpunk mode choices now follow the selected method and include Native AA and Dynamic where supported.
+- Cyberpunk 2.31 now reads and writes the renamed `MaximumFPS_Value` field while retaining legacy `MaximumFPS` compatibility.
+- Cyberpunk Frame Limit now uses the game-native `Off` label instead of `Unlimited`, and guarded writes now authorize this setting.
+
+### Validation
+- Full test suite: 278 passed.
+- Real Cyberpunk 2077 2.31 validation confirmed `Windowed` and `1920x1080` persist in the game UI.
+
+---
+
 # v0.08.5 (2026-09-16)
 
 ### Fixed

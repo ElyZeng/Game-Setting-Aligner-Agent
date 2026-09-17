@@ -38,6 +38,89 @@ def test_unknown_game_is_not_allowed_to_write(tmp_path):
         )
 
 
+def test_write_rule_rejects_settings_not_in_supported_list(tmp_path):
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path)
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate",
+        "reason": "verified",
+        "rule": {"supported_settings": ["resolution", "screen_mode"]},
+    }
+    writes = []
+
+    with pytest.raises(VerificationError, match="write_setting_not_allowed:vsync"):
+        backup_and_write(
+            "Cyberpunk 2077", "Steam", "2.31", [], {"vsync": "On"},
+            lambda *_args: writes.append(True), registry,
+        )
+
+    assert writes == []
+
+
+def test_cyberpunk_upscaling_validation_accepts_method_and_mode_readback(tmp_path, monkeypatch):
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path)
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate",
+        "reason": "verified",
+        "rule": {"supported_settings": ["upscaling", "upscaling_mode"]},
+    }
+    monkeypatch.setattr(
+        "config_manager.verification.extract_key_settings",
+        lambda *_args: {"upscaling": "XeSS", "upscaling_mode": "Auto"},
+    )
+
+    result = backup_and_write(
+        "Cyberpunk 2077", "Steam", "2.31", [],
+        {"upscaling": "XeSS", "upscaling_mode": "Auto"},
+        lambda *_args: [], registry,
+    )
+
+    assert result == []
+
+
+def test_cyberpunk_upscaling_validation_rejects_wrong_quality(tmp_path, monkeypatch):
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path)
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate",
+        "reason": "verified",
+        "rule": {"supported_settings": ["upscaling", "upscaling_mode"]},
+    }
+    monkeypatch.setattr(
+        "config_manager.verification.extract_key_settings",
+        lambda *_args: {"upscaling": "XeSS", "upscaling_mode": "Performance"},
+    )
+
+    with pytest.raises(VerificationError, match="write_validation_failed_restored"):
+        backup_and_write(
+            "Cyberpunk 2077", "Steam", "2.31", [],
+            {"upscaling": "XeSS", "upscaling_mode": "Quality"},
+            lambda *_args: [], registry,
+        )
+
+
+def test_cyberpunk_frame_limit_validation_accepts_fps_label(tmp_path, monkeypatch):
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path)
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate",
+        "reason": "verified",
+        "rule": {"supported_settings": ["frame_limit"]},
+    }
+    monkeypatch.setattr(
+        "config_manager.verification.extract_key_settings",
+        lambda *_args: {"frame_limit": "120"},
+    )
+
+    result = backup_and_write(
+        "Cyberpunk 2077", "Steam", "2.31", [], {"frame_limit": "120 FPS"},
+        lambda *_args: [], registry,
+    )
+
+    assert result == []
+
+
 def test_verified_game_still_requires_test_write_consent(tmp_path):
     registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
     fingerprint = structural_fingerprint([])

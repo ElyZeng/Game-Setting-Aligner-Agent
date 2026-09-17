@@ -36,6 +36,8 @@ from config_manager.settings_parser import (
     ALL_KEYS,
     RESOLUTION,
     SCREEN_MODE,
+    UPSCALING,
+    UPSCALING_MODE,
     FRAME_GENERATION,
     DISPLAY_NAMES,
     DISPLAY_NAMES_EN,
@@ -115,6 +117,7 @@ class GameRow:
         "frame_limit": "⏱️",
         "dynamic_resolution": "📐",
         "upscaling": "🔍",
+        "upscaling_mode": "🔍",
         "frame_generation": "🎞️",
     }
 
@@ -221,6 +224,7 @@ class GameRow:
             w.destroy()
         self._setting_labels.clear()
         self._setting_vars.clear()
+        setting_menus: Dict[str, Any] = {}
 
         if not self._key_settings:
             return
@@ -280,8 +284,14 @@ class GameRow:
                 and "25" in self.game_name.casefold()
                 and self._key_settings.get(SCREEN_MODE) == "Borderless Windowed"
             )
-            if value != "N/A" and not borderless_resolution and is_setting_writable_for_game(self.game_name, key):
-                options = setting_options_for_game(self.game_name, key)
+            cyberpunk_mode = key == UPSCALING_MODE and "cyberpunk" in self.game_name.casefold()
+            if (value != "N/A" or cyberpunk_mode) and not borderless_resolution and is_setting_writable_for_game(self.game_name, key):
+                options = setting_options_for_game(
+                    self.game_name,
+                    key,
+                    value,
+                    upscaling_method=self._key_settings.get(UPSCALING),
+                )
                 if (
                     key == SCREEN_MODE
                     and "f1" in self.game_name.casefold()
@@ -308,6 +318,21 @@ class GameRow:
                     text_color=("#333", "#ccc"),
                 )
                 dropdown.grid(row=row, column=col + 2, sticky="w", padx=(2, 8), pady=1)
+                setting_menus[key] = dropdown
+
+                if key == UPSCALING and "cyberpunk" in self.game_name.casefold():
+                    def _update_upscaling_modes(method: str) -> None:
+                        mode_menu = setting_menus.get(UPSCALING_MODE)
+                        mode_var = self._setting_vars.get(UPSCALING_MODE)
+                        if mode_menu is not None and mode_var is not None:
+                            mode_var.set("—")
+                            mode_menu.configure(values=setting_options_for_game(
+                                self.game_name,
+                                UPSCALING_MODE,
+                                upscaling_method=method,
+                            ))
+
+                    dropdown.configure(command=_update_upscaling_modes)
 
         # Apply button row
         btn_frame = ctk.CTkFrame(self._detail_frame, fg_color="transparent")
@@ -568,7 +593,8 @@ class App:
         global_grid.pack(fill="x", padx=4, pady=(2, 6))
 
         self._global_vars: Dict[str, ctk.StringVar] = {}
-        for i, key in enumerate(ALL_KEYS):
+        global_keys = [key for key in ALL_KEYS if key != UPSCALING_MODE]
+        for i, key in enumerate(global_keys):
             col = (i % 4) * 2
             row = i // 4
 
@@ -1253,7 +1279,10 @@ class App:
             # Only apply settings that the game actually supports (not None, not N/A)
             game_applicable = {
                 k: v for k, v in global_changes.items()
-                if row._key_settings.get(k) is not None and row._key_settings.get(k) != "N/A"
+                if row._key_settings.get(k) is not None
+                and row._key_settings.get(k) != "N/A"
+                and is_setting_writable_for_game(row.game_name, k)
+                and v in setting_options_for_game(row.game_name, k, row._key_settings.get(k))
             }
             if game_applicable:
                 applicable.append(row)
@@ -1288,6 +1317,8 @@ class App:
                 if row._key_settings
                 and row._key_settings.get(k) is not None
                 and row._key_settings.get(k) != "N/A"
+                and is_setting_writable_for_game(row.game_name, k)
+                and v in setting_options_for_game(row.game_name, k, row._key_settings.get(k))
             }
             if not game_changes:
                 continue

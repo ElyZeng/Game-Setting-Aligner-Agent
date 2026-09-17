@@ -421,6 +421,12 @@ def backup_and_write(
     verification = registry.status_for(game, platform, game_version, fingerprint)
     if verification["status"] not in {"write_candidate", "write_verified"}:
         raise VerificationError(f"write_not_allowed:{verification['reason']}")
+    rule = verification.get("rule") or {}
+    supported_settings = rule.get("supported_settings")
+    if isinstance(supported_settings, list):
+        unsupported = sorted(set(settings) - set(supported_settings))
+        if unsupported:
+            raise VerificationError(f"write_setting_not_allowed:{','.join(unsupported)}")
     if (
         "forza" in game.lower()
         and settings.get("vsync") == "On"
@@ -470,6 +476,13 @@ def backup_and_write(
     def _setting_matches(key: str, expected_value: Any) -> bool:
         actual_value = str(parsed.get(key))
         expected_text = str(expected_value)
+        if key == "resolution":
+            expected_text = expected_text.split(" (", 1)[0]
+        if key == "frame_limit" and "cyberpunk" in game.lower():
+            return actual_value.removesuffix(" FPS") == expected_text.removesuffix(" FPS")
+        if key == "upscaling" and "cyberpunk" in game.lower():
+            aliases = {"FSR2": "FSR 2.1", "FSR3": "FSR 3"}
+            return aliases.get(actual_value, actual_value).casefold() == aliases.get(expected_text, expected_text).casefold()
         if key == "quick_preset" and game.lower().find("f1") >= 0 and game.lower().find("25") >= 0:
             return actual_value in {expected_text, f"Custom ({expected_text})"}
         return actual_value == expected_text
