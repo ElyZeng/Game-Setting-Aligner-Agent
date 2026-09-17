@@ -62,7 +62,7 @@ def prepare_rules(output: Path, rules_dir: Path | None, rules_release: str | Non
             if not gh:
                 raise RuntimeError("GitHub CLI is required for --rules-release")
             temporary_dir = Path(tempfile.mkdtemp(prefix="game-tuner-rules-"))
-            run([gh, "release", "download", rules_release, "--repo", "ElyZeng/Game-Tuner-POC", "--pattern", "verified-games.json", "--pattern", "verified-games.json.sha256", "--dir", str(temporary_dir), "--clobber"])
+            run([gh, "release", "download", rules_release, "--repo", "ElyZeng/Game-Setting-Aligner-Agent", "--pattern", "verified-games.json", "--pattern", "verified-games.json.sha256", "--dir", str(temporary_dir), "--clobber"])
             source_dir = temporary_dir
         if source_dir is None:
             raise ValueError("provide --rules-dir or --rules-release")

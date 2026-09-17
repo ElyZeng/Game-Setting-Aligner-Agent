@@ -157,7 +157,7 @@ python tools/manage_verification.py build-release reviewed-rules.json --output-d
 python tools/manage_verification.py build-bundle reviewed-rules.json --output verified-rules.gtrules --version 1.0.0 --minimum-client-version 0.05.1
 ```
 
-將 `release-assets/verified-games.json` 及 `release-assets/verified-games.json.sha256` 以同一個 Release 上傳至 `ElyZeng/Game-Tuner-POC`。
+將 `release-assets/verified-games.json` 及 `release-assets/verified-games.json.sha256` 以同一個 Release 上傳至 `ElyZeng/Game-Setting-Aligner-Agent`。
 
 乾淨 Windows 環境的完整測試流程請見 [docs/clean-environment-test.md](docs/clean-environment-test.md)。
 
@@ -259,12 +259,12 @@ Type `/game-tuner` or use natural language (e.g., "scan my games") to invoke.
 
    方法 A — 從 GitHub Clone：
    ```bash
-   git clone https://github.com/ElyZeng/Game-Tuner-POC.git
+  git clone https://github.com/ElyZeng/Game-Setting-Aligner-Agent.git
    cd Game-Tuner-POC
    ```
 
    方法 B — 下載 Release 的 `.exe`（免安裝 Python）：
-   - 前往 https://github.com/ElyZeng/Game-Tuner-POC/releases
+  - 前往 https://github.com/ElyZeng/Game-Setting-Aligner-Agent/releases
    - 下載 `GameTuner.exe`，雙擊即可啟動 GUI
 
 3. **安裝依賴**（僅方法 A 需要）
