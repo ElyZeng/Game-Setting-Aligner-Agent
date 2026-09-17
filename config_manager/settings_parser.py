@@ -536,7 +536,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
 
     image_quality = ui_values.get("ImageQuality")
     screen_ratio = ui_values.get("ScreenRatio")
-    if not benchmark and image_quality and screen_ratio == "0":
+    if not benchmark and r[RESOLUTION] is None and image_quality and screen_ratio == "0":
         try:
             height = int(image_quality)
             standard_heights = (720, 900, 1080, 1440, 2160)

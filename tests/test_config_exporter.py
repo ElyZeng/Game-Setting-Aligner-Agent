@@ -809,6 +809,50 @@ class TestF1PresetInference:
 
 
 class TestGameSpecificUnrealParsers:
+    def test_parse_black_myth_retail_keeps_explicit_windowed_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1600
+ResolutionSizeY=900
+LastUserConfirmedResolutionSizeX=1600
+LastUserConfirmedResolutionSizeY=900
+FullscreenMode=2
+LastUserConfirmedDesiredScreenWidth=1600
+LastUserConfirmedDesiredScreenHeight=900
+UISettingData=(("ScreenMode", "2"),("ScreenRatio", "0"),("ScreenResolution", "1"),("WindowFullImageQuality", "0"),("ImageQuality", "1080"))
+"""
+
+        result = extract_key_settings(
+            "Black Myth: Wukong",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["resolution"] == "1600x900"
+        assert result["screen_mode"] == "Windowed"
+
+    def test_parse_black_myth_retail_keeps_explicit_borderless_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1600
+ResolutionSizeY=900
+LastUserConfirmedResolutionSizeX=1600
+LastUserConfirmedResolutionSizeY=900
+FullscreenMode=1
+LastUserConfirmedDesiredScreenWidth=1600
+LastUserConfirmedDesiredScreenHeight=900
+UISettingData=(("ScreenMode", "1"),("ScreenRatio", "0"),("ScreenResolution", "1"),("ImageQuality", "1080"))
+"""
+
+        result = extract_key_settings(
+            "Black Myth: Wukong",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["resolution"] == "1600x900"
+        assert result["screen_mode"] == "Borderless Windowed"
+
     def test_black_myth_benchmark_options_match_game_capabilities(self):
         from config_manager.settings_parser import setting_options_for_game
 
