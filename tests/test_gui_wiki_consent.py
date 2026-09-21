@@ -7,6 +7,16 @@ from types import SimpleNamespace
 from gui import app as gui_app
 
 
+def test_open_export_folder_opens_zip_parent(monkeypatch, tmp_path):
+    opened = []
+    monkeypatch.setattr(gui_app.os, "startfile", opened.append)
+    output = tmp_path / "reports" / "game-tuner-report.zip"
+
+    gui_app._open_export_folder(output)
+
+    assert opened == [output.parent]
+
+
 class FakeWikiClient:
     def __init__(self, states):
         self.states = dict(states)

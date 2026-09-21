@@ -52,6 +52,10 @@ from config_manager.settings_writer import write_settings
 _UNABLE_TO_CHECK = object()
 
 
+def _open_export_folder(output_path: Any) -> None:
+    os.startfile(output_path.parent)
+
+
 def adjust_f1_frame_generation_changes(
     game_name: str,
     current_settings: Dict[str, Optional[str]],
@@ -1150,11 +1154,57 @@ class App:
             except (OSError, ValueError) as exc:
                 messagebox.showerror("Diagnostic Export Failed", str(exc), parent=window)
                 return
-            window.destroy()
-            messagebox.showinfo(
-                "Diagnostics Exported",
-                f"Created report for {len(report_games)} game(s).\n\n{output.parent}\n\nShare it only through your approved private channel.",
-            )
+
+            for child in window.winfo_children():
+                child.destroy()
+            window.geometry("620x300")
+
+            complete = ctk.CTkFrame(window, fg_color="transparent")
+            complete.pack(fill="both", expand=True, padx=24, pady=24)
+            ctk.CTkLabel(
+                complete,
+                text="Diagnostics Exported",
+                font=ctk.CTkFont(size=20, weight="bold"),
+            ).pack(anchor="w")
+            ctk.CTkLabel(
+                complete,
+                text=f"Created report for {len(report_games)} game(s).",
+            ).pack(anchor="w", pady=(8, 0))
+            ctk.CTkLabel(
+                complete,
+                text=str(output.parent),
+                text_color="gray",
+                wraplength=560,
+                justify="left",
+            ).pack(anchor="w", pady=(12, 0))
+            ctk.CTkLabel(
+                complete,
+                text="Share it only through your approved private channel.",
+                text_color="gray",
+            ).pack(anchor="w", pady=(12, 0))
+
+            complete_actions = ctk.CTkFrame(complete, fg_color="transparent")
+            complete_actions.pack(fill="x", side="bottom")
+
+            def _open_output_folder() -> None:
+                try:
+                    _open_export_folder(output)
+                except OSError as exc:
+                    messagebox.showerror("Open Folder Failed", str(exc), parent=window)
+
+            ctk.CTkButton(
+                complete_actions,
+                text="Open Folder",
+                width=120,
+                command=_open_output_folder,
+            ).pack(side="left")
+            ctk.CTkButton(
+                complete_actions,
+                text="Close",
+                width=95,
+                fg_color="gray30",
+                command=window.destroy,
+            ).pack(side="right")
 
         ctk.CTkButton(actions, text="Select All", width=95, fg_color="gray30", command=lambda: _set_all(True)).pack(side="left", padx=4)
         ctk.CTkButton(actions, text="Select None", width=95, fg_color="gray30", command=lambda: _set_all(False)).pack(side="left", padx=4)
