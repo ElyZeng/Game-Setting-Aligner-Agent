@@ -82,6 +82,7 @@ def build_preview(
     total_bytes = 0
     for game in games:
         files = []
+        game_name = str(game.get("name", ""))
         for config_file in game.get("config_files", []):
             content = config_file.get("content")
             if not config_file.get("found") or not isinstance(content, str):
@@ -91,6 +92,13 @@ def build_preview(
                 continue
             file_id = config_file_id(config_file)
             default_selection = default_file_selection(config_file)
+            if (
+                ("black myth" in game_name.casefold() or "wukong" in game_name.casefold())
+                and os.path.basename(str(config_file.get("expanded_path", ""))).casefold()
+                != "gameusersettings.ini"
+                and default_selection["selected"]
+            ):
+                default_selection = {"selected": False, "reason": "not_game_settings"}
             included = file_id in selected_ids if selected_ids is not None else bool(default_selection["selected"])
             total_bytes += size if include_content and included else 0
             files.append({
@@ -104,7 +112,7 @@ def build_preview(
                 "preview": anonymize_value(content)[:1000] if include_content and included else None,
             })
         selected_games.append({
-            "name": game.get("name", ""), "platform": game.get("platform", ""),
+            "name": game_name, "platform": game.get("platform", ""),
             "version": game.get("version", "unknown"), "files": files,
             "parsed_settings": game.get("parsed_settings", {}),
         })
