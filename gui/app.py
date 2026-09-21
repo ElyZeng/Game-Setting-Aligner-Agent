@@ -56,6 +56,14 @@ def _open_export_folder(output_path: Any) -> None:
     os.startfile(output_path.parent)
 
 
+def _verification_allows_setting(verification: Dict[str, Any], key: str) -> bool:
+    if verification.get("status") not in {"write_candidate", "write_verified"}:
+        return False
+    rule = verification.get("rule") or {}
+    supported_settings = rule.get("supported_settings", [])
+    return isinstance(supported_settings, list) and key in supported_settings
+
+
 def adjust_f1_frame_generation_changes(
     game_name: str,
     current_settings: Dict[str, Optional[str]],
@@ -297,7 +305,12 @@ class GameRow:
                 for method in setting_options_for_game(self.game_name, UPSCALING)[1:]
                 if method != "Off"
             )
-            if (value != "N/A" or upscaling_mode_control) and not borderless_resolution and is_setting_writable_for_game(self.game_name, key):
+            if (
+                (value != "N/A" or upscaling_mode_control)
+                and not borderless_resolution
+                and is_setting_writable_for_game(self.game_name, key)
+                and _verification_allows_setting(self.verification, key)
+            ):
                 options = setting_options_for_game(
                     self.game_name,
                     key,
@@ -447,6 +460,8 @@ class GameRow:
     def update_verification(self, verification: Dict[str, Any]) -> None:
         """Show policy state and disable writes unless explicitly verified."""
         self.verification = verification
+        if self._key_settings:
+            self._build_settings_panel()
         status = verification.get("status", "candidate")
         reason = verification.get("reason", "")
         if hasattr(self, "_apply_btn"):
@@ -1335,6 +1350,8 @@ class App:
             if row._key_settings.get(key) == "N/A" and key != UPSCALING_MODE:
                 return False
             if not is_setting_writable_for_game(row.game_name, key):
+                return False
+            if not _verification_allows_setting(row.verification, key):
                 return False
             method = global_changes.get(UPSCALING) or row._key_settings.get(UPSCALING)
             return value in setting_options_for_game(
