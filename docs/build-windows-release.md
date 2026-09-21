@@ -1,6 +1,6 @@
 # Windows Release Build
 
-Use `tools/build_windows_release.py` from the repository root. The command runs the full test suite, builds the PyInstaller bundle, creates the EXE checksum, obtains the verification manifest assets, validates the manifest checksum, and fails unless all four release assets exist.
+Use `tools/build_windows_release.py` from the repository root. The command runs the full test suite, builds the PyInstaller bundle, creates the ZIP checksum, obtains the verification manifest assets, validates the manifest checksum, and fails unless all four release assets exist.
 
 ## From a local rules directory
 
@@ -27,11 +27,13 @@ python tools/build_windows_release.py `
 A successful build prints and creates exactly these release assets:
 
 ```text
-release-output/GameTuner-windows-x64.zip
-release-output/GameTuner-windows-x64.zip.sha256
+release-output/Game-Setting-Aligner-Agent-windows-x64.zip
+release-output/Game-Setting-Aligner-Agent-windows-x64.zip.sha256
 release-output/verified-games.json
 release-output/verified-games.json.sha256
 ```
+
+The archive contains `Game-Setting-Aligner-Agent/Game-Setting-Aligner-Agent.exe`.
 
 Upload all four files to the same GitHub Release. Do not publish the EXE assets alone: the application requires both verification manifest assets for **Check Rules**.
 

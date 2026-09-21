@@ -25,7 +25,7 @@ Before sending the test package:
    `write_candidate` rule for that exact combination. Do not use `*` for the
    version or fingerprint in a write-test rule.
 3. Confirm the rule declares only settings that the parser and writer support.
-4. Provide the tester with `GameTuner-windows-x64.zip` and the expected SHA-256
+4. Provide the tester with `Game-Setting-Aligner-Agent-windows-x64.zip` and the expected SHA-256
    of that ZIP through the approved private channel.
 5. Tell the tester which game settings are expected to be supported.
 
