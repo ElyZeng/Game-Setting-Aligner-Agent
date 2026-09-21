@@ -29,6 +29,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO_ROOT / "release-output"
 RULE_FILES = ("verified-games.json", "verified-games.json.sha256")
+PRODUCT_NAME = "Game-Setting-Aligner-Agent"
+ARCHIVE_NAME = f"{PRODUCT_NAME}-windows-x64"
 
 
 def run(command: list[str], *, cwd: Path = REPO_ROOT) -> None:
@@ -92,17 +94,16 @@ def build(args: argparse.Namespace) -> Path:
     version = args.version or read_app_version()
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    bundle_name = "GameTuner-windows-x64"
-    zip_path = output / f"{bundle_name}.zip"
-    checksum_path = output / f"{bundle_name}.zip.sha256"
+    zip_path = output / f"{ARCHIVE_NAME}.zip"
+    checksum_path = output / f"{ARCHIVE_NAME}.zip.sha256"
     build_dir = REPO_ROOT / "build"
     dist_dir = REPO_ROOT / "dist"
 
     run([sys.executable, "-m", "pytest", "-q"])
-    run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--name", bundle_name, "--add-data", "cache;cache", "main.py"])
+    run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--name", PRODUCT_NAME, "--add-data", "cache;cache", "main.py"])
     if zip_path.exists():
         zip_path.unlink()
-    shutil.make_archive(str(zip_path.with_suffix("")), "zip", root_dir=dist_dir, base_dir=bundle_name)
+    shutil.make_archive(str(zip_path.with_suffix("")), "zip", root_dir=dist_dir, base_dir=PRODUCT_NAME)
     checksum_path.write_text(f"{sha256(zip_path)}  {zip_path.name}\n", encoding="ascii")
     prepare_rules(output, args.rules_dir, args.rules_release)
     validate_manifest(output)
