@@ -51,6 +51,26 @@ def test_returns_unknown_when_executables_have_no_product_version(tmp_path, monk
     assert game_version.detect_game_version(str(executable.parent)) == "unknown"
 
 
+def test_uses_matching_steam_manifest_build_id_when_product_version_is_empty(tmp_path, monkeypatch):
+    steamapps = tmp_path / "steamapps"
+    install_path = steamapps / "common" / "BlackMythWukong"
+    install_path.mkdir(parents=True)
+    (install_path / "b1.exe").touch()
+    (steamapps / "appmanifest_2358720.acf").write_text(
+        '"AppState"\n{\n\t"appid" "2358720"\n\t"installdir" "BlackMythWukong"\n\t"buildid" "21393610"\n}\n',
+        encoding="utf-8",
+    )
+
+    _make_windows_install(monkeypatch)
+    monkeypatch.setattr(
+        game_version.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(stdout="\n"),
+    )
+
+    assert game_version.detect_game_version(str(install_path)) == "Steam build 21393610"
+
+
 @pytest.mark.parametrize("name", ["GameLauncher.exe", "CrashReporter.exe", "Uninstall.exe", "HelperTool.exe"])
 def test_excludes_non_game_executables(name):
     assert game_version._is_game_executable(name) is False
