@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import subprocess
 
+import vdf
+
 
 _NON_GAME_EXECUTABLE_TERMS = (
     "launcher", "launch", "crash", "report", "uninstall", "setup", "install",
@@ -36,6 +38,34 @@ def _executable_rank(executable: str, install_path: str) -> tuple[int, str]:
     return -score, executable.casefold()
 
 
+def _steam_build_version(install_path: str) -> str:
+    install_dir = os.path.normpath(install_path)
+    common_dir = os.path.dirname(install_dir)
+    steamapps_dir = os.path.dirname(common_dir)
+    if os.path.basename(common_dir).casefold() != "common":
+        return "unknown"
+    expected_install_dir = os.path.basename(install_dir).casefold()
+    try:
+        manifest_names = os.listdir(steamapps_dir)
+    except OSError:
+        return "unknown"
+    for manifest_name in manifest_names:
+        if not manifest_name.casefold().startswith("appmanifest_") or not manifest_name.casefold().endswith(".acf"):
+            continue
+        manifest_path = os.path.join(steamapps_dir, manifest_name)
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+                app_state = vdf.load(manifest_file).get("AppState", {})
+        except (OSError, ValueError):
+            continue
+        if str(app_state.get("installdir", "")).casefold() != expected_install_dir:
+            continue
+        build_id = str(app_state.get("buildid", "")).strip()
+        if build_id:
+            return f"Steam build {build_id}"
+    return "unknown"
+
+
 def detect_game_version(install_path: str) -> str:
     """Read the most likely game executable's Windows product version."""
     if os.name != "nt" or not os.path.isdir(install_path):
@@ -63,4 +93,4 @@ def detect_game_version(install_path: str) -> str:
                 return result
         except (OSError, subprocess.SubprocessError):
             continue
-    return "unknown"
+    return _steam_build_version(install_path)

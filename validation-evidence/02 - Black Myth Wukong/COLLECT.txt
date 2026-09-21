@@ -1,16 +1,16 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: Read/Output; prepare for full Write validation
+Phase: Read verified; complete Diagnostic Output before Write validation
 
 中文指示
-1. 在 01-read-evidence 逐項比對 8 個 Setting。
+1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
 2. 在 02-diagnostic-output 放入兩種 ZIP，確認空白與無關 INI 未被選取。
 3. 維護者確認 Game Version 與 GameUserSettings.ini Fingerprint 後發布 write_candidate。
 4. Rule 生效後逐項測試 Apply、Game Persistence、Read-back 與 Restore。
 
 English Instructions
-1. Compare all 8 settings with the game UI.
+1. Read passed on 2026-09-21 using the 9-setting schema.
 2. Confirm empty and unrelated Unreal INI files are excluded from diagnostics.
 3. Test Write only after an exact GameUserSettings.ini write_candidate rule is active.
 4. Capture backup and restoration evidence.
