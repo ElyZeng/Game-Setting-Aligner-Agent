@@ -39,6 +39,22 @@ def test_default_file_selection_excludes_private_or_empty_files():
     }
 
 
+def test_black_myth_recommends_only_game_user_settings():
+    preview = build_preview([{
+        "name": "Black Myth: Wukong",
+        "platform": "Steam",
+        "config_files": [
+            {"expanded_path": "Engine.ini", "found": True, "content": "r.Foo=1\n"},
+            {"expanded_path": "GameUserSettings.ini", "found": True, "content": "VSync=True\n"},
+        ],
+    }], include_content=False)
+
+    files = {item["path"]: item for item in preview["games"][0]["files"]}
+    assert files["Engine.ini"]["default_selected"] is False
+    assert files["Engine.ini"]["selection_reason"] == "not_game_settings"
+    assert files["GameUserSettings.ini"]["default_selected"] is True
+
+
 def test_export_writes_anonymous_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr("config_manager.diagnostic_package.collect_windows_hardware", lambda: {"os_version": "test"})
     path = export_diagnostic_package([{
