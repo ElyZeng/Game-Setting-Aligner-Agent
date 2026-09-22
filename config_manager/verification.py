@@ -106,6 +106,19 @@ def structural_fingerprint(config_files: Iterable[Dict[str, Any]]) -> str:
     return hashlib.sha256(digest_input).hexdigest()
 
 
+def game_structural_fingerprint(
+    game: str, config_files: Iterable[Dict[str, Any]]
+) -> str:
+    files = list(config_files)
+    if "black myth" in game.casefold() or "wukong" in game.casefold():
+        files = [
+            config_file for config_file in files
+            if Path(str(config_file.get("expanded_path", ""))).name.casefold()
+            == "gameusersettings.ini"
+        ]
+    return structural_fingerprint(files)
+
+
 def content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -441,7 +454,7 @@ def backup_and_write(
                 refreshed["found"] = False
         refreshed_files.append(refreshed)
     config_files = refreshed_files
-    fingerprint = structural_fingerprint(config_files)
+    fingerprint = game_structural_fingerprint(game, config_files)
     verification = registry.status_for(game, platform, game_version, fingerprint)
     if verification["status"] not in {"write_candidate", "write_verified"}:
         raise VerificationError(f"write_not_allowed:{verification['reason']}")

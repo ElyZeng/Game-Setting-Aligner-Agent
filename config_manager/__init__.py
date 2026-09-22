@@ -14,7 +14,7 @@ from .settings_parser import (
     SETTING_OPTIONS, setting_options_for_game,
 )
 from .settings_writer import write_settings
-from .verification import app_data_dir, VerificationError, VerificationRegistry, backup_and_write, structural_fingerprint
+from .verification import app_data_dir, VerificationError, VerificationRegistry, backup_and_write, game_structural_fingerprint, structural_fingerprint
 from .diagnostic_package import build_preview, export_diagnostic_package
 from .game_version import detect_game_version
 
@@ -25,7 +25,7 @@ __all__ = [
     "write_settings",
     "_try_read_file", "_read_registry_key", "_is_expanded_registry_path",
     "_scan_directory",
-    "app_data_dir", "VerificationError", "VerificationRegistry", "backup_and_write", "structural_fingerprint",
+    "app_data_dir", "VerificationError", "VerificationRegistry", "backup_and_write", "game_structural_fingerprint", "structural_fingerprint",
     "build_preview", "export_diagnostic_package",
     "detect_game_version",
 ]
