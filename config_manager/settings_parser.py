@@ -32,6 +32,20 @@ UPSCALING_MODE = "upscaling_mode"
 FRAME_GENERATION = "frame_generation"
 QUICK_PRESET = "quick_preset"
 
+BLACK_MYTH_SCALABILITY_KEYS = (
+    "sg.ViewDistanceQuality",
+    "sg.AntiAliasingQuality",
+    "sg.ShadowQuality",
+    "sg.GlobalIlluminationQuality",
+    "sg.RayTracingQuality",
+    "sg.ReflectionQuality",
+    "sg.PostProcessQuality",
+    "sg.TextureQuality",
+    "sg.EffectsQuality",
+    "sg.FoliageQuality",
+    "sg.ShadingQuality",
+)
+
 ALL_KEYS = [
     RESOLUTION,
     SCREEN_MODE,
@@ -622,7 +636,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
 
     quality = ui_values.get("QualityLevel")
     if quality is not None:
-        r[QUICK_PRESET] = {
+        preset = {
             "0": "Custom",
             "1": "Low",
             "2": "Medium",
@@ -630,6 +644,18 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
             "4": "Very High",
             "5": "Cinematic",
         }.get(quality, f"Quality Level {quality}")
+        scalability_values = [
+            ini_values[key] for key in BLACK_MYTH_SCALABILITY_KEYS
+            if key in ini_values
+        ]
+        expected_level = str(int(quality) - 1) if quality.isdigit() and quality != "0" else None
+        r[QUICK_PRESET] = (
+            "Custom"
+            if expected_level is not None
+            and scalability_values
+            and any(value != expected_level for value in scalability_values)
+            else preset
+        )
 
     super_resolution = ui_values.get("SuperResolutionSampling")
     if super_resolution is not None:

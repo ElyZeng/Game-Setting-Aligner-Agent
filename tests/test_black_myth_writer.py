@@ -238,6 +238,17 @@ def test_black_myth_guarded_write_supports_all_writable_settings(tmp_path):
     settings_path = tmp_path / "GameUserSettings.ini"
     content = """[ScalabilityGroups]
 sg.ResolutionQuality=100
+sg.ViewDistanceQuality=0
+sg.AntiAliasingQuality=0
+sg.ShadowQuality=0
+sg.GlobalIlluminationQuality=0
+sg.RayTracingQuality=0
+sg.ReflectionQuality=0
+sg.PostProcessQuality=0
+sg.TextureQuality=0
+sg.EffectsQuality=0
+sg.FoliageQuality=0
+sg.ShadingQuality=0
 [/Script/GSGameSettings.GSGameUserSettings]
 bUseVSync=True
 bUseDynamicResolution=False
@@ -309,3 +320,36 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"),("SuperResolutionSampling", "1
     assert parsed["upscaling_mode"] == "Balanced (66%)"
     assert parsed["frame_generation"] == "Off"
     assert parsed["quick_preset"] == "High"
+    written = settings_path.read_text(encoding="utf-8")
+    assert "sg.ResolutionQuality=66" in written
+    for key in (
+        "ViewDistance", "AntiAliasing", "Shadow", "GlobalIllumination",
+        "RayTracing", "Reflection", "PostProcess", "Texture", "Effects",
+        "Foliage", "Shading",
+    ):
+        assert f"sg.{key}Quality=2" in written
+
+
+def test_black_myth_parser_rejects_preset_label_when_scalability_differs():
+    content = """[ScalabilityGroups]
+sg.ViewDistanceQuality=0
+sg.AntiAliasingQuality=0
+sg.ShadowQuality=0
+sg.GlobalIlluminationQuality=0
+sg.RayTracingQuality=0
+sg.ReflectionQuality=0
+sg.PostProcessQuality=0
+sg.TextureQuality=0
+sg.EffectsQuality=0
+sg.FoliageQuality=0
+sg.ShadingQuality=0
+[/Script/GSGameSettings.GSGameUserSettings]
+UISettingData=(("QualityLevel", "2"))
+"""
+
+    parsed = extract_key_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": "GameUserSettings.ini", "found": True, "content": content}],
+    )
+
+    assert parsed["quick_preset"] == "Custom"
