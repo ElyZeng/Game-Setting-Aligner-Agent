@@ -1,5 +1,16 @@
 # Changelog
 
+# v0.08.10 (2026-09-22)
+
+### Fixed
+- Verification manifests now preserve multiple structural fingerprints for the same game, platform, and version.
+- Black Myth: Wukong accepts both observed Steam build 21393610 structures before and after the game removes its transient desired-resolution keys.
+
+### Safety
+- Both Black Myth variants remain `write_candidate` and expose only Resolution, Screen Mode, and V-Sync.
+
+---
+
 # Verification Rules v1.2.10 (2026-09-22)
 
 ### Changed
