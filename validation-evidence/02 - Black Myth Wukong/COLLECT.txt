@@ -1,7 +1,7 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: Eight-setting write candidate validation with client 0.08.12 and rules v1.2.14
+Phase: Eight-setting write candidate validation with client 0.08.13 and rules v1.2.15
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
@@ -14,6 +14,7 @@ Phase: Eight-setting write candidate validation with client 0.08.12 and rules v1
 8. Dynamic Resolution 標記為 N/A，不進行寫入測試。
 9. 依序測試 Frame Limit、Upscaling Method、Upscaling Mode、Frame Generation、Quick Preset；每項都要完成 Apply、Game Persistence、Read-back 與 Restore。
 10. Upscaling Mode 顯示檔位與實際渲染比例，例如 Performance (50%)、Balanced (66%)、Quality (75%)。
+11. Fingerprint 只使用 GameUserSettings.ini 結構；其他 26 個 Config 檔案仍納入備份與變更檢查。
 
 English Instructions
 1. Read passed on 2026-09-21 using the 9-setting schema.
@@ -26,6 +27,7 @@ English Instructions
 8. Dynamic Resolution is N/A and is not included in write validation.
 9. Test Frame Limit, Upscaling Method, Upscaling Mode, Frame Generation, and Quick Preset separately; each must pass Apply, game persistence, parser read-back, and restore.
 10. Upscaling Mode displays both a tier and its exact render ratio, such as Performance (50%), Balanced (66%), and Quality (75%).
+11. Fingerprinting uses only the GameUserSettings.ini structure; the other 26 config files remain covered by backup and change checks.
 
 停止條件 / Stop Conditions
 - 只能修改 GameUserSettings.ini / Modify only GameUserSettings.ini.

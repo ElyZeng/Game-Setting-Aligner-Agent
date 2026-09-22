@@ -1,5 +1,13 @@
 # Changelog
 
+# v0.08.13 (2026-09-22)
+
+### Fixed
+- Black Myth: Wukong verification now fingerprints only its writable `GameUserSettings.ini` structure.
+- Unrelated keys created in `Engine.ini` no longer disable guarded writes; all detected files remain covered by backup and non-target safety checks.
+
+---
+
 # v0.08.12 (2026-09-22)
 
 ### Fixed

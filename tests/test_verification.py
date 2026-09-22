@@ -13,6 +13,7 @@ from config_manager.verification import (
     VerificationError,
     VerificationRegistry,
     backup_and_write,
+    game_structural_fingerprint,
     structural_fingerprint,
 )
 
@@ -46,8 +47,8 @@ def test_reviewed_rules_enable_all_black_myth_retail_writer_settings():
         if rule["game"] == "Black Myth: Wukong" and rule["platform"] == "Steam"
     ]
     assert {rule["fingerprint"] for rule in rules} == {
-        "7a680d37bf9186fe2585b3807a8ea45f8c5c372807f5a571722c1873326db41f",
-        "d687010bb6ceb9c148bf80935e37b955eff542d10ecbe2e99fa5fd97a0618b2c",
+        "d4387b1827b144ce6b0fe8d8163f973268ee928d742276062f0924068dbc4843",
+        "1198ec49c02647f504ab71f395df6d73ec36bfc650abad34094549c48a482dd1",
     }
     for rule in rules:
         assert rule["version"] == "Steam build 21393610"
@@ -374,6 +375,25 @@ def test_structural_fingerprint_ignores_setting_values():
     one = structural_fingerprint([{"expanded_path": "GameUserSettings.ini", "content": "VSync=True\n"}])
     two = structural_fingerprint([{"expanded_path": "GameUserSettings.ini", "content": "VSync=False\n"}])
     assert one == two
+
+
+def test_black_myth_fingerprint_ignores_unrelated_engine_keys():
+    game_settings = {
+        "expanded_path": "GameUserSettings.ini",
+        "content": "ResolutionSizeX=1920\n",
+    }
+    before = [game_settings, {"expanded_path": "Engine.ini", "content": "r.Foo=1\n"}]
+    after = [
+        game_settings,
+        {"expanded_path": "Engine.ini", "content": "r.Foo=1\nStickyKeysHotkey=False\n"},
+    ]
+
+    assert game_structural_fingerprint("Black Myth: Wukong", before) == (
+        game_structural_fingerprint("Black Myth: Wukong", after)
+    )
+    assert game_structural_fingerprint("Other Unreal Game", before) != (
+        game_structural_fingerprint("Other Unreal Game", after)
+    )
 
 
 def test_release_update_installs_manifest_and_keeps_previous(tmp_path):

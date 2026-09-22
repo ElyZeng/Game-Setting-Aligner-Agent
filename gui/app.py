@@ -22,7 +22,7 @@ from wiki_api import PCGamingWikiClient
 from config_manager import (
     ConfigPackage, ConfigExporter, VerificationError, VerificationRegistry,
     app_data_dir, backup_and_write, build_preview, detect_config_files, detect_game_version,
-    export_diagnostic_package, structural_fingerprint,
+    export_diagnostic_package, game_structural_fingerprint,
 )
 from main import __version__
 from config_manager.config_exporter import (
@@ -843,7 +843,7 @@ class App:
                     game_name,
                     getattr(game, "platform", "Unknown"),
                     detect_game_version(install_path),
-                    structural_fingerprint(config_dicts),
+                    game_structural_fingerprint(game_name, config_dicts),
                 )
             except Exception:
                 # Graceful degradation: network errors, timeouts, parsing
@@ -1043,7 +1043,7 @@ class App:
                         row.game_name,
                         row.platform,
                         detect_game_version(row.install_path),
-                        structural_fingerprint(row._config_dicts),
+                        game_structural_fingerprint(row.game_name, row._config_dicts),
                     )
                 except Exception:
                     verification = {"status": "candidate", "reason": "detection_failed"}

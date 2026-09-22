@@ -164,7 +164,7 @@ def cmd_apply(args):
 
 
 def cmd_verification_status(args):
-    from config_manager import VerificationRegistry, detect_game_version, structural_fingerprint
+    from config_manager import VerificationRegistry, detect_game_version, game_structural_fingerprint
 
     games = _scan_all()
     matched = next((game for game in games if game.get("name", "").lower() == args.game.lower()), {})
@@ -172,7 +172,7 @@ def cmd_verification_status(args):
     registry = VerificationRegistry(__version__)
     _json_out(registry.status_for(
         args.game, matched.get("platform", "Unknown"), detect_game_version(matched.get("install_path", "")),
-        structural_fingerprint(config_files),
+        game_structural_fingerprint(args.game, config_files),
     ))
 
 
