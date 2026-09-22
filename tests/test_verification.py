@@ -40,14 +40,14 @@ def test_reviewed_rules_preserve_current_writable_games():
     assert {"Cyberpunk 2077", "F1 25", "Forza Horizon 6"} <= writable_games
 
 
-def test_reviewed_rules_enable_black_myth_retail_vsync_candidate():
+def test_reviewed_rules_verify_black_myth_retail_vsync_write():
     rule = next(
         rule for rule in _reviewed_rules()
         if rule["game"] == "Black Myth: Wukong" and rule["platform"] == "Steam"
     )
     assert rule["version"] == "Steam build 21393610"
     assert rule["fingerprint"] == "6681478b79e4f536a8caad72c2ca8668ab88e1f1b0aea2aaa52c289dd260318f"
-    assert rule["status"] == "write_candidate"
+    assert rule["status"] == "write_verified"
     assert rule["supported_settings"] == ["vsync"]
     assert rule["writer_id"] == "black-myth-ini-writer"
 

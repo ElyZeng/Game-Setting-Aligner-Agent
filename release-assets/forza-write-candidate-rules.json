@@ -77,7 +77,7 @@
     "platform": "Steam",
     "version": "Steam build 21393610",
     "fingerprint": "6681478b79e4f536a8caad72c2ca8668ab88e1f1b0aea2aaa52c289dd260318f",
-    "status": "write_candidate",
+    "status": "write_verified",
     "config_patterns": [
       "%LOCALAPPDATA%/b1/Saved/Config/Windows/GameUserSettings.ini"
     ],
