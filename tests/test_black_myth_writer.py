@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from config_manager.settings_parser import extract_key_settings
+from config_manager.settings_parser import extract_key_settings, setting_options_for_game
 from config_manager.settings_writer import write_settings
 from config_manager.verification import backup_and_write
+
+
+def test_black_myth_dynamic_resolution_is_not_available():
+    assert setting_options_for_game(
+        "Black Myth: Wukong", "dynamic_resolution", "N/A"
+    ) == ["—"]
 
 
 def test_black_myth_vsync_round_trip_only_writes_game_user_settings(tmp_path):
@@ -179,7 +185,7 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"),("SuperResolutionSampling", "1
             "reason": "verified",
             "rule": {"supported_settings": [
                 "resolution", "screen_mode", "vsync", "frame_limit",
-                "dynamic_resolution", "upscaling", "upscaling_mode",
+                "upscaling", "upscaling_mode",
                 "frame_generation", "quick_preset",
             ]},
         },
@@ -195,7 +201,6 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"),("SuperResolutionSampling", "1
             "screen_mode": "Fullscreen",
             "vsync": "Off",
             "frame_limit": "60 FPS",
-            "dynamic_resolution": "On",
             "upscaling": "XeSS",
             "upscaling_mode": "Balanced (66%)",
             "frame_generation": "Off",
@@ -217,7 +222,7 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"),("SuperResolutionSampling", "1
     assert parsed["screen_mode"] == "Fullscreen"
     assert parsed["vsync"] == "Off"
     assert parsed["frame_limit"] == "60 FPS"
-    assert parsed["dynamic_resolution"] == "On"
+    assert parsed["dynamic_resolution"] == "N/A"
     assert parsed["upscaling"] == "XeSS"
     assert parsed["upscaling_mode"] == "Balanced (66%)"
     assert parsed["frame_generation"] == "Off"

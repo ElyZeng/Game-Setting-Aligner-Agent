@@ -54,7 +54,7 @@ def test_reviewed_rules_enable_all_black_myth_retail_writer_settings():
         assert rule["status"] == "write_candidate"
         assert rule["supported_settings"] == [
             "resolution", "screen_mode", "vsync", "frame_limit",
-            "dynamic_resolution", "upscaling", "upscaling_mode",
+            "upscaling", "upscaling_mode",
             "frame_generation", "quick_preset",
         ]
         assert rule["writer_id"] == "black-myth-ini-writer"

@@ -322,6 +322,8 @@ def setting_options_for_game(
 ) -> List[str]:
     name = game_name.casefold()
     if "black myth" in name or "wukong" in name:
+        if key == DYNAMIC_RESOLUTION:
+            return ["—"]
         if "benchmark" in name and key == SCREEN_MODE:
             return ["—", "Borderless Windowed", "Windowed"]
         if "benchmark" in name and key == UPSCALING:
@@ -649,8 +651,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
                 "1": "Auto",
             }.get(insert_frame, f"Mode {insert_frame}")
 
-    if benchmark:
-        r[DYNAMIC_RESOLUTION] = "N/A"
+    r[DYNAMIC_RESOLUTION] = "N/A"
 
     return r
 
