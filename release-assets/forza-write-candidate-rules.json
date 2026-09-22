@@ -82,6 +82,8 @@
       "%LOCALAPPDATA%/b1/Saved/Config/Windows/GameUserSettings.ini"
     ],
     "supported_settings": [
+      "resolution",
+      "screen_mode",
       "vsync"
     ],
     "reader_id": "black-myth-parser",

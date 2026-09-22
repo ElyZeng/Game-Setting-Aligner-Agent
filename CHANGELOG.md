@@ -1,5 +1,13 @@
 # Changelog
 
+# Verification Rules v1.2.10 (2026-09-22)
+
+### Changed
+- The Black Myth: Wukong write candidate now exposes every setting implemented by its dedicated retail writer: Resolution, Screen Mode, and V-Sync.
+- Promotion requires separate live Apply, game persistence, parser read-back, and restore checks for all three settings.
+
+---
+
 # v0.08.9 (2026-09-22)
 
 ### Fixed
