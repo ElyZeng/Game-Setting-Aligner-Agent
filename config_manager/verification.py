@@ -155,13 +155,15 @@ def merge_with_builtin(manifest: Dict[str, Any], client_version: str) -> Dict[st
     """Merge downloaded rules over the conservative built-in baseline."""
     baseline = builtin_manifest(client_version)
     merged = dict(manifest)
-    rules_by_key = {
-        (_normalise_title(rule["game"]), rule["platform"].lower()): rule
-        for rule in baseline["games"]
+    remote_rules = manifest.get("games", [])
+    remote_keys = {
+        (_normalise_title(rule["game"]), rule["platform"].lower())
+        for rule in remote_rules
     }
-    for rule in manifest.get("games", []):
-        rules_by_key[(_normalise_title(rule["game"]), rule["platform"].lower())] = rule
-    merged["games"] = list(rules_by_key.values())
+    merged["games"] = [
+        rule for rule in baseline["games"]
+        if (_normalise_title(rule["game"]), rule["platform"].lower()) not in remote_keys
+    ] + list(remote_rules)
     return merged
 
 

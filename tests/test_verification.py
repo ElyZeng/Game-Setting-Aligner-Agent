@@ -41,15 +41,19 @@ def test_reviewed_rules_preserve_current_writable_games():
 
 
 def test_reviewed_rules_enable_all_black_myth_retail_writer_settings():
-    rule = next(
+    rules = [
         rule for rule in _reviewed_rules()
         if rule["game"] == "Black Myth: Wukong" and rule["platform"] == "Steam"
-    )
-    assert rule["version"] == "Steam build 21393610"
-    assert rule["fingerprint"] == "7a680d37bf9186fe2585b3807a8ea45f8c5c372807f5a571722c1873326db41f"
-    assert rule["status"] == "write_candidate"
-    assert rule["supported_settings"] == ["resolution", "screen_mode", "vsync"]
-    assert rule["writer_id"] == "black-myth-ini-writer"
+    ]
+    assert {rule["fingerprint"] for rule in rules} == {
+        "7a680d37bf9186fe2585b3807a8ea45f8c5c372807f5a571722c1873326db41f",
+        "d687010bb6ceb9c148bf80935e37b955eff542d10ecbe2e99fa5fd97a0618b2c",
+    }
+    for rule in rules:
+        assert rule["version"] == "Steam build 21393610"
+        assert rule["status"] == "write_candidate"
+        assert rule["supported_settings"] == ["resolution", "screen_mode", "vsync"]
+        assert rule["writer_id"] == "black-myth-ini-writer"
 
 
 def test_reviewed_rules_only_allow_known_unique_setting_keys():
@@ -668,6 +672,41 @@ def test_exact_platform_fingerprint_mismatch_is_not_reported_as_version_mismatch
     assert result["status"] == "candidate"
     assert result["reason"] == "fingerprint_mismatch"
     assert result["rule"] is None
+
+
+def test_multiple_exact_platform_fingerprint_variants_remain_matchable(tmp_path):
+    registry = VerificationRegistry("0.08.10", data_dir=tmp_path)
+    rules = []
+    for fingerprint in ("before-game-normalization", "after-game-normalization"):
+        rules.append({
+            "game": "Black Myth: Wukong",
+            "platform": "Steam",
+            "version": "Steam build 21393610",
+            "fingerprint": fingerprint,
+            "status": "write_candidate",
+            "config_patterns": [],
+            "supported_settings": ["resolution", "screen_mode", "vsync"],
+            "reader_id": "black-myth-parser",
+            "writer_id": "black-myth-ini-writer",
+        })
+    registry.current_path.write_text(json.dumps({
+        "format_version": 1,
+        "manifest_version": "test",
+        "minimum_client_version": "0.08.10",
+        "games": rules,
+    }), encoding="utf-8")
+
+    before = registry.status_for(
+        "Black Myth: Wukong", "Steam", "Steam build 21393610",
+        "before-game-normalization",
+    )
+    after = registry.status_for(
+        "Black Myth: Wukong", "Steam", "Steam build 21393610",
+        "after-game-normalization",
+    )
+
+    assert before["reason"] == "verified"
+    assert after["reason"] == "verified"
 
 
 @pytest.mark.parametrize(
