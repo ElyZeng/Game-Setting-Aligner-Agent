@@ -1,23 +1,26 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: V-Sync write_candidate corrected; repeat guarded Write validation with 0.08.9
+Phase: Full writable-setting candidate validation with client 0.08.9 and rules v1.2.10
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
 2. Diagnostic Output 已於 2026-09-21 驗證通過，只推薦 GameUserSettings.ini。
 3. 先前測試後發現 rule fingerprint 不符合 GUI 的完整 27-file fingerprint，因此不列為有效 promotion 證據。
-4. 使用 0.08.9 與新版 rules，確認 write_candidate: verified 且只有 V-Sync 可寫入。
-5. 重新測試 V-Sync Apply、Game Persistence、Read-back 與 Restore；其他設定仍不可寫入。
+4. 使用 0.08.9 與 rules v1.2.10，確認 write_candidate: verified，且只顯示 Resolution、Screen Mode、V-Sync 三個可寫入欄位。
+5. 依序測試 Resolution、Screen Mode、V-Sync；每項都要完成 Apply、Game Persistence、Read-back 與 Restore。
+6. Frame Limit、Dynamic Resolution、Upscaling Method、Upscaling Mode、Frame Generation、Quick Preset 仍不可寫入。
 
 English Instructions
 1. Read passed on 2026-09-21 using the 9-setting schema.
 2. Diagnostic Output passed on 2026-09-21 with only GameUserSettings.ini recommended.
 3. The prior test used a rule fingerprint that did not match the GUI's complete 27-file fingerprint, so it is not valid promotion evidence.
-4. Use 0.08.9 and the corrected rules; confirm write_candidate: verified and that only V-Sync is writable.
-5. Repeat V-Sync Apply, game persistence, read-back, and restore; all other settings remain blocked.
+4. Use client 0.08.9 and rules v1.2.10; confirm write_candidate: verified and that only Resolution, Screen Mode, and V-Sync are writable.
+5. Test Resolution, Screen Mode, and V-Sync separately; each must pass Apply, game persistence, parser read-back, and restore.
+6. Frame Limit, Dynamic Resolution, Upscaling Method, Upscaling Mode, Frame Generation, and Quick Preset remain blocked.
 
 停止條件 / Stop Conditions
 - 只能修改 GameUserSettings.ini / Modify only GameUserSettings.ini.
 - ApexDestruction.ini、Input.ini 等其他 INI 不得被修改。
+- 每次只變更一個設定，並在下一項前還原原值 / Change one setting at a time and restore it before the next setting.
 - Stop immediately if any unrelated Config changes.

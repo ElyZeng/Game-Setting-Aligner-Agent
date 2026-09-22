@@ -97,10 +97,19 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
     assert '("ScreenMode", "0")' in written
 
 
-def test_black_myth_guarded_vsync_write_creates_backup_and_reads_back(tmp_path):
+def test_black_myth_guarded_write_supports_all_writable_settings(tmp_path):
     settings_path = tmp_path / "GameUserSettings.ini"
     content = """[/Script/GSGameSettings.GSGameUserSettings]
 bUseVSync=True
+ResolutionSizeX=1600
+ResolutionSizeY=900
+LastUserConfirmedResolutionSizeX=1600
+LastUserConfirmedResolutionSizeY=900
+LastUserConfirmedDesiredScreenWidth=1600
+LastUserConfirmedDesiredScreenHeight=900
+FullscreenMode=2
+LastConfirmedFullscreenMode=2
+PreferredFullscreenMode=1
 UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
 """
     settings_path.write_text(content, encoding="utf-8")
@@ -115,7 +124,7 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
         status_for=lambda *_args: {
             "status": "write_candidate",
             "reason": "verified",
-            "rule": {"supported_settings": ["vsync"]},
+            "rule": {"supported_settings": ["resolution", "screen_mode", "vsync"]},
         },
     )
 
@@ -124,7 +133,11 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
         "Steam",
         "Steam build 21393610",
         config_files,
-        {"vsync": "Off"},
+        {
+            "resolution": "1920x1080",
+            "screen_mode": "Fullscreen",
+            "vsync": "Off",
+        },
         write_settings,
         registry,
     )
@@ -132,8 +145,11 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
     backup = registry.data_dir / "backups" / "Black_Myth_Wukong" / "0-GameUserSettings.ini"
     assert result[0]["status"] == "ok"
     assert backup.read_text(encoding="utf-8") == content
-    assert extract_key_settings("Black Myth: Wukong", [{
+    parsed = extract_key_settings("Black Myth: Wukong", [{
         "expanded_path": str(settings_path),
         "found": True,
         "content": settings_path.read_text(encoding="utf-8"),
-    }])["vsync"] == "Off"
+    }])
+    assert parsed["resolution"] == "1920x1080"
+    assert parsed["screen_mode"] == "Fullscreen"
+    assert parsed["vsync"] == "Off"
