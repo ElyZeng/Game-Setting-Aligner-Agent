@@ -354,10 +354,6 @@ def _write_black_myth_ini(
     result = _write_unreal_ini(content, settings)
 
     resolution = settings.get(RESOLUTION)
-    if resolution and "x" in resolution:
-        width, height = resolution.split("x", 1)
-        result = _replace_ini_value(result, "LastUserConfirmedDesiredScreenWidth", width.strip())
-        result = _replace_ini_value(result, "LastUserConfirmedDesiredScreenHeight", height.strip())
 
     screen_mode = settings.get(SCREEN_MODE)
     screen_mode_values = {
@@ -377,25 +373,60 @@ def _write_black_myth_ini(
         )
 
     upscaling = settings.get(UPSCALING)
-    upscaling_values = {"Off": "0", "XeSS": "1"}
+    upscaling_values = {"FSR3": "0", "XeSS": "1", "TSR": "3", "NXSR": "5"}
     if upscaling in upscaling_values:
         result = _replace_black_myth_ui_value(
             result, "SuperResolutionSampling", upscaling_values[upscaling]
         )
+        if upscaling != "XeSS":
+            result = _replace_black_myth_ui_value(result, "InsertFrame", "0")
 
     upscaling_mode = settings.get(UPSCALING_MODE)
+    render_percentage: Optional[int] = None
     if upscaling_mode is not None:
         percentage_match = re.search(r"\((\d{1,3})%\)\s*$", upscaling_mode)
         if percentage_match:
-            percentage = int(percentage_match.group(1))
-            if 1 <= percentage <= 100:
-                result = _replace_ini_value(result, "sg.ResolutionQuality", str(percentage))
+            render_percentage = int(percentage_match.group(1))
+            if 1 <= render_percentage <= 100:
+                result = _replace_ini_value(
+                    result, "sg.ResolutionQuality", str(render_percentage)
+                )
+            else:
+                render_percentage = None
+    elif resolution is not None:
+        current_percentage = _parse_ini_kv(result).get("sg.ResolutionQuality", "100")
+        if current_percentage and current_percentage.isdigit():
+            render_percentage = int(current_percentage)
+
+    if render_percentage is not None:
+        ini_values = _parse_ini_kv(result)
+        width = ini_values.get("ResolutionSizeX")
+        height = ini_values.get("ResolutionSizeY")
+        if width and width.isdigit() and height and height.isdigit():
+            render_width = int(int(width) * render_percentage / 100)
+            render_height = int(int(height) * render_percentage / 100)
+            image_quality = round(int(height) * render_percentage / 100)
+            for key in ("DesiredScreenWidth", "LastUserConfirmedDesiredScreenWidth"):
+                result = _replace_ini_value(result, key, str(render_width))
+            for key in ("DesiredScreenHeight", "LastUserConfirmedDesiredScreenHeight"):
+                result = _replace_ini_value(result, key, str(render_height))
+            result = _replace_black_myth_ui_value(
+                result, "ImageQuality", str(image_quality)
+            )
 
     frame_generation = settings.get(FRAME_GENERATION)
     frame_generation_values = {"Off": "0", "Auto": "1", "On": "1"}
+    current_upscaling = dict(
+        re.findall(r'\("([^"]+)",\s*"([^"]*)"\)', result)
+    ).get("SuperResolutionSampling")
     if frame_generation in frame_generation_values:
+        stored_frame_generation = (
+            frame_generation_values[frame_generation]
+            if current_upscaling == "1"
+            else "0"
+        )
         result = _replace_black_myth_ui_value(
-            result, "InsertFrame", frame_generation_values[frame_generation]
+            result, "InsertFrame", stored_frame_generation
         )
 
     quick_preset = settings.get(QUICK_PRESET)

@@ -1,7 +1,7 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: Eight-setting write candidate validation with client 0.08.13 and rules v1.2.15
+Phase: Eight-setting write candidate validation with client 0.08.14 and rules v1.2.16
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
@@ -15,6 +15,8 @@ Phase: Eight-setting write candidate validation with client 0.08.13 and rules v1
 9. 依序測試 Frame Limit、Upscaling Method、Upscaling Mode、Frame Generation、Quick Preset；每項都要完成 Apply、Game Persistence、Read-back 與 Restore。
 10. Upscaling Mode 顯示檔位與實際渲染比例，例如 Performance (50%)、Balanced (66%)、Quality (75%)。
 11. Fingerprint 只使用 GameUserSettings.ini 結構；其他 26 個 Config 檔案仍納入備份與變更檢查。
+12. Upscaling Method 實機映射：FSR3=0、XeSS=1、TSR=3、NXSR=5；只有 XeSS 可將 Frame Generation 設為 Auto。
+13. Upscaling Mode 必須同步 sg.ResolutionQuality 與依畫面高度換算的 ImageQuality，例如 1080p 的 66% 為 713。
 
 English Instructions
 1. Read passed on 2026-09-21 using the 9-setting schema.
@@ -28,6 +30,8 @@ English Instructions
 9. Test Frame Limit, Upscaling Method, Upscaling Mode, Frame Generation, and Quick Preset separately; each must pass Apply, game persistence, parser read-back, and restore.
 10. Upscaling Mode displays both a tier and its exact render ratio, such as Performance (50%), Balanced (66%), and Quality (75%).
 11. Fingerprinting uses only the GameUserSettings.ini structure; the other 26 config files remain covered by backup and change checks.
+12. Observed Upscaling Method mapping: FSR3=0, XeSS=1, TSR=3, NXSR=5; only XeSS may set Frame Generation to Auto.
+13. Upscaling Mode must synchronize sg.ResolutionQuality and the height-derived ImageQuality; for example, 66% of 1080p is 713.
 
 停止條件 / Stop Conditions
 - 只能修改 GameUserSettings.ini / Modify only GameUserSettings.ini.

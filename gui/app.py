@@ -356,6 +356,16 @@ class GameRow:
                                 UPSCALING_MODE,
                                 upscaling_method=method,
                             ))
+                        frame_generation_menu = setting_menus.get(FRAME_GENERATION)
+                        frame_generation_var = self._setting_vars.get(FRAME_GENERATION)
+                        if frame_generation_menu is not None and frame_generation_var is not None:
+                            frame_generation_options = setting_options_for_game(
+                                self.game_name,
+                                FRAME_GENERATION,
+                                upscaling_method=method,
+                            )
+                            frame_generation_var.set("—" if method == "XeSS" else "Off")
+                            frame_generation_menu.configure(values=frame_generation_options)
 
                     dropdown.configure(command=_update_upscaling_modes)
 

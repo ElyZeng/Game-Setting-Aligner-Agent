@@ -1,5 +1,14 @@
 # Changelog
 
+# v0.08.14 (2026-09-22)
+
+### Fixed
+- Black Myth: Wukong retail Upscaling Method now exposes the observed TSR, NXSR, FSR3, and XeSS options with their correct stored values.
+- Frame Generation can be enabled only with XeSS; selecting another method forces it Off.
+- Upscaling Mode now synchronizes both `sg.ResolutionQuality` and `UISettingData.ImageQuality`, preventing the game from restoring the previous render ratio.
+
+---
+
 # v0.08.13 (2026-09-22)
 
 ### Fixed
