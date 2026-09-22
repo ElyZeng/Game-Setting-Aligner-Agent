@@ -382,6 +382,11 @@ class VerificationRegistry:
             if _normalise_title(rule["game"]) == _normalise_title(game)
             and rule["platform"].lower() in ("*", platform.lower())
         ]
+        exact_platform = [
+            rule for rule in matching if rule["platform"].lower() == platform.lower()
+        ]
+        if exact_platform:
+            matching = exact_platform
         matching.sort(
             key=lambda rule: (
                 rule["platform"].lower() != "*",
@@ -417,6 +422,23 @@ def backup_and_write(
     """Write only verified configs, restoring the backup if validation fails."""
     if not registry.test_write_enabled():
         raise VerificationError("test_write_consent_required")
+    refreshed_files: List[Dict[str, Any]] = []
+    for config_file in config_files:
+        refreshed = dict(config_file)
+        path = Path(str(config_file.get("expanded_path", "")))
+        if config_file.get("type") != "registry":
+            if path.is_file():
+                try:
+                    refreshed["content"] = path.read_text(encoding="utf-8", errors="replace")
+                    refreshed["found"] = True
+                except OSError:
+                    refreshed["content"] = None
+                    refreshed["found"] = False
+            else:
+                refreshed["content"] = None
+                refreshed["found"] = False
+        refreshed_files.append(refreshed)
+    config_files = refreshed_files
     fingerprint = structural_fingerprint(config_files)
     verification = registry.status_for(game, platform, game_version, fingerprint)
     if verification["status"] not in {"write_candidate", "write_verified"}:

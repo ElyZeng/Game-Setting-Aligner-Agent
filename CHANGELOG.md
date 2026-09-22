@@ -1,5 +1,18 @@
 # Changelog
 
+# v0.08.9 (2026-09-22)
+
+### Fixed
+- Guarded writes now re-read file-backed configs immediately before fingerprint validation, backup, and writer execution.
+- Exact-platform fingerprint mismatches are reported accurately instead of falling through to a built-in version mismatch.
+- The Black Myth: Wukong V-Sync candidate uses the fingerprint produced by the GUI's complete 27-file detection set.
+
+### Safety
+- Black Myth remains `write_candidate` until V-Sync is repeated through the corrected live-disk validation path.
+- The candidate continues to allow only V-Sync and only for Steam build 21393610.
+
+---
+
 # v0.08.8 (2026-09-21)
 
 ### Added
