@@ -376,6 +376,42 @@ def _write_black_myth_ini(
             result, "Vsync", "1" if vsync == "On" else "0"
         )
 
+    upscaling = settings.get(UPSCALING)
+    upscaling_values = {"Off": "0", "XeSS": "1"}
+    if upscaling in upscaling_values:
+        result = _replace_black_myth_ui_value(
+            result, "SuperResolutionSampling", upscaling_values[upscaling]
+        )
+
+    upscaling_mode = settings.get(UPSCALING_MODE)
+    if upscaling_mode is not None:
+        percentage_match = re.search(r"\((\d{1,3})%\)\s*$", upscaling_mode)
+        if percentage_match:
+            percentage = int(percentage_match.group(1))
+            if 1 <= percentage <= 100:
+                result = _replace_ini_value(result, "sg.ResolutionQuality", str(percentage))
+
+    frame_generation = settings.get(FRAME_GENERATION)
+    frame_generation_values = {"Off": "0", "Auto": "1", "On": "1"}
+    if frame_generation in frame_generation_values:
+        result = _replace_black_myth_ui_value(
+            result, "InsertFrame", frame_generation_values[frame_generation]
+        )
+
+    quick_preset = settings.get(QUICK_PRESET)
+    quick_preset_values = {
+        "Custom": "0",
+        "Low": "1",
+        "Medium": "2",
+        "High": "3",
+        "Very High": "4",
+        "Cinematic": "5",
+    }
+    if quick_preset in quick_preset_values:
+        result = _replace_black_myth_ui_value(
+            result, "QualityLevel", quick_preset_values[quick_preset]
+        )
+
     return result
 
 

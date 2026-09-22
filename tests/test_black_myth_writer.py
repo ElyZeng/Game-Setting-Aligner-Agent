@@ -97,10 +97,63 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
     assert '("ScreenMode", "0")' in written
 
 
+def test_black_myth_upscaling_mode_round_trip_uses_render_percentage(tmp_path):
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = """[ScalabilityGroups]
+sg.ResolutionQuality=100
+[/Script/GSGameSettings.GSGameUserSettings]
+UISettingData=(("SuperResolutionSampling", "1"))
+"""
+    settings_path.write_text(content, encoding="utf-8")
+
+    write_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": str(settings_path), "found": True, "content": content}],
+        {"upscaling_mode": "Balanced (66%)"},
+    )
+
+    written = settings_path.read_text(encoding="utf-8")
+    parsed = extract_key_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": str(settings_path), "found": True, "content": written}],
+    )
+    assert "sg.ResolutionQuality=66" in written
+    assert parsed["upscaling_mode"] == "Balanced (66%)"
+
+
+def test_black_myth_upscaling_method_round_trip_updates_ui_setting_data(tmp_path):
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = """[ScalabilityGroups]
+sg.ResolutionQuality=66
+[/Script/GSGameSettings.GSGameUserSettings]
+UISettingData=(("SuperResolutionSampling", "1"))
+"""
+    settings_path.write_text(content, encoding="utf-8")
+
+    write_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": str(settings_path), "found": True, "content": content}],
+        {"upscaling": "Off"},
+    )
+
+    written = settings_path.read_text(encoding="utf-8")
+    parsed = extract_key_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": str(settings_path), "found": True, "content": written}],
+    )
+    assert '("SuperResolutionSampling", "0")' in written
+    assert parsed["upscaling"] == "Off"
+    assert parsed["upscaling_mode"] == "N/A"
+
+
 def test_black_myth_guarded_write_supports_all_writable_settings(tmp_path):
     settings_path = tmp_path / "GameUserSettings.ini"
-    content = """[/Script/GSGameSettings.GSGameUserSettings]
+    content = """[ScalabilityGroups]
+sg.ResolutionQuality=100
+[/Script/GSGameSettings.GSGameUserSettings]
 bUseVSync=True
+bUseDynamicResolution=False
+FrameRateLimit=0.000000
 ResolutionSizeX=1600
 ResolutionSizeY=900
 LastUserConfirmedResolutionSizeX=1600
@@ -110,7 +163,7 @@ LastUserConfirmedDesiredScreenHeight=900
 FullscreenMode=2
 LastConfirmedFullscreenMode=2
 PreferredFullscreenMode=1
-UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
+UISettingData=(("ScreenMode", "2"),("Vsync", "1"),("SuperResolutionSampling", "1"),("InsertFrame", "1"),("QualityLevel", "1"))
 """
     settings_path.write_text(content, encoding="utf-8")
     config_files = [{
@@ -124,7 +177,11 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
         status_for=lambda *_args: {
             "status": "write_candidate",
             "reason": "verified",
-            "rule": {"supported_settings": ["resolution", "screen_mode", "vsync"]},
+            "rule": {"supported_settings": [
+                "resolution", "screen_mode", "vsync", "frame_limit",
+                "dynamic_resolution", "upscaling", "upscaling_mode",
+                "frame_generation", "quick_preset",
+            ]},
         },
     )
 
@@ -137,6 +194,12 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
             "resolution": "1920x1080",
             "screen_mode": "Fullscreen",
             "vsync": "Off",
+            "frame_limit": "60 FPS",
+            "dynamic_resolution": "On",
+            "upscaling": "XeSS",
+            "upscaling_mode": "Balanced (66%)",
+            "frame_generation": "Off",
+            "quick_preset": "High",
         },
         write_settings,
         registry,
@@ -153,3 +216,9 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"))
     assert parsed["resolution"] == "1920x1080"
     assert parsed["screen_mode"] == "Fullscreen"
     assert parsed["vsync"] == "Off"
+    assert parsed["frame_limit"] == "60 FPS"
+    assert parsed["dynamic_resolution"] == "On"
+    assert parsed["upscaling"] == "XeSS"
+    assert parsed["upscaling_mode"] == "Balanced (66%)"
+    assert parsed["frame_generation"] == "Off"
+    assert parsed["quick_preset"] == "High"

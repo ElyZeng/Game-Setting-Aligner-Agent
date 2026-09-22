@@ -65,15 +65,62 @@ def test_games_without_upscaling_mode_report_not_available():
         "Street Fighter 6",
         [_config("UpscaleType=DLSS\n", "config.ini")],
     )
-    black_myth = extract_key_settings(
-        "Black Myth: Wukong",
-        [_config('UISettingData=(("SuperResolutionSampling", "1"))', "GameUserSettings.ini")],
-    )
 
     assert sf6["upscaling"] == "DLSS"
     assert sf6["upscaling_mode"] == "N/A"
-    assert black_myth["upscaling"] == "XeSS"
-    assert black_myth["upscaling_mode"] == "N/A"
+
+
+@pytest.mark.parametrize(
+    ("percentage", "expected"),
+    [
+        ("50", "Performance (50%)"),
+        ("66", "Balanced (66%)"),
+        ("71", "Quality (71%)"),
+        ("100", "Native AA (100%)"),
+    ],
+)
+def test_black_myth_reports_percentage_upscaling_mode(percentage, expected):
+    result = extract_key_settings(
+        "Black Myth: Wukong",
+        [_config(
+            f'sg.ResolutionQuality={percentage}\nUISettingData=(("SuperResolutionSampling", "1"))',
+            "GameUserSettings.ini",
+        )],
+    )
+
+    assert result["upscaling"] == "XeSS"
+    assert result["upscaling_mode"] == expected
+
+
+def test_black_myth_exposes_percentage_upscaling_modes():
+    assert setting_options_for_game("Black Myth: Wukong", "upscaling") == [
+        "—", "Off", "XeSS",
+    ]
+    assert setting_options_for_game(
+        "Black Myth: Wukong", "upscaling_mode", upscaling_method="XeSS",
+    ) == [
+        "—",
+        "Ultra Performance (33%)",
+        "Performance (50%)",
+        "Balanced (66%)",
+        "Quality (75%)",
+        "Native AA (100%)",
+    ]
+
+
+def test_black_myth_hides_percentage_modes_when_upscaling_is_off():
+    assert setting_options_for_game(
+        "Black Myth: Wukong", "upscaling_mode", upscaling_method="Off",
+    ) == ["—"]
+
+
+def test_black_myth_exposes_retail_frame_generation_and_preset_options():
+    assert setting_options_for_game(
+        "Black Myth: Wukong", "frame_generation", upscaling_method="XeSS",
+    ) == ["—", "Off", "Auto"]
+    assert setting_options_for_game("Black Myth: Wukong", "quick_preset") == [
+        "—", "Custom", "Low", "Medium", "High", "Very High", "Cinematic",
+    ]
 
 
 def test_forza_exposes_separate_method_and_mode_options():
