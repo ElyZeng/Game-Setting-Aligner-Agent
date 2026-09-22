@@ -1,5 +1,14 @@
 # Changelog
 
+# v0.08.15 (2026-09-22)
+
+### Fixed
+- Black Myth: Wukong Quick Preset now synchronizes all game-consumed scalability groups instead of changing only the preset label.
+- Guarded read-back reports `Custom` when the preset label disagrees with the underlying scalability values, preventing false-positive writes.
+- Upscaling render percentage remains independent when applying a Quick Preset.
+
+---
+
 # v0.08.14 (2026-09-22)
 
 ### Fixed

@@ -1,7 +1,7 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: Eight-setting write candidate validation with client 0.08.14 and rules v1.2.16
+Phase: Quick Preset write candidate validation pending client 0.08.15 retest
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
@@ -17,6 +17,11 @@ Phase: Eight-setting write candidate validation with client 0.08.14 and rules v1
 11. Fingerprint 只使用 GameUserSettings.ini 結構；其他 26 個 Config 檔案仍納入備份與變更檢查。
 12. Upscaling Method 實機映射：FSR3=0、XeSS=1、TSR=3、NXSR=5；只有 XeSS 可將 Frame Generation 設為 Auto。
 13. Upscaling Mode 必須同步 sg.ResolutionQuality 與依畫面高度換算的 ImageQuality，例如 1080p 的 66% 為 713。
+14. 2026-09-22 使用 0.08.14 與 rules v1.2.17，XeSS、Quality (75%)、Frame Generation Auto 已通過 Apply、遊戲內生效、重啟持久化與 parser read-back。
+15. 本次測試後 26 個非目標 INI 均與備份一致；Upscaling Method、Upscaling Mode、Frame Generation 的 unrelated-file safety 通過。
+16. Frame Limit 先前已通過；目前只剩 Quick Preset 尚未完成 live validation，完成前維持 write_candidate。
+17. 0.08.14 的 Low → Medium 測試失敗：QualityLevel 已變成 2，但十一個 sg.*Quality 仍為 0，因此遊戲維持 Low。
+18. 0.08.15 同步寫入十一個 scalability groups，並在標籤與實際品質不一致時回報 Custom；需要重新測試 Low → Medium。
 
 English Instructions
 1. Read passed on 2026-09-21 using the 9-setting schema.
@@ -32,6 +37,11 @@ English Instructions
 11. Fingerprinting uses only the GameUserSettings.ini structure; the other 26 config files remain covered by backup and change checks.
 12. Observed Upscaling Method mapping: FSR3=0, XeSS=1, TSR=3, NXSR=5; only XeSS may set Frame Generation to Auto.
 13. Upscaling Mode must synchronize sg.ResolutionQuality and the height-derived ImageQuality; for example, 66% of 1080p is 713.
+14. On 2026-09-22 with client 0.08.14 and rules v1.2.17, XeSS, Quality (75%), and Frame Generation Auto passed Apply, in-game effect, restart persistence, and parser read-back.
+15. All 26 non-target INI files still matched their backups after this test; unrelated-file safety passed for Upscaling Method, Upscaling Mode, and Frame Generation.
+16. Frame Limit passed previously. Quick Preset is the only remaining live validation item, so the rule remains write_candidate until it passes.
+17. The 0.08.14 Low-to-Medium test failed: QualityLevel changed to 2, but all eleven sg.*Quality values remained 0, so the game stayed on Low.
+18. Client 0.08.15 synchronizes all eleven scalability groups and reports Custom when the label disagrees with actual quality; Low-to-Medium requires a new live test.
 
 停止條件 / Stop Conditions
 - 只能修改 GameUserSettings.ini / Modify only GameUserSettings.ini.

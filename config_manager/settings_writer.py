@@ -24,6 +24,7 @@ from .settings_parser import (
     FRAME_GENERATION,
     _parse_ini_kv,
     desktop_display_mode,
+    BLACK_MYTH_SCALABILITY_KEYS,
     FORZA_PRESET_SIGNATURES,
     F1_PRESET_SIGNATURES,
 )
@@ -442,6 +443,10 @@ def _write_black_myth_ini(
         result = _replace_black_myth_ui_value(
             result, "QualityLevel", quick_preset_values[quick_preset]
         )
+        if quick_preset != "Custom":
+            scalability_level = str(int(quick_preset_values[quick_preset]) - 1)
+            for key in BLACK_MYTH_SCALABILITY_KEYS:
+                result = _replace_ini_value(result, key, scalability_level)
 
     return result
 
