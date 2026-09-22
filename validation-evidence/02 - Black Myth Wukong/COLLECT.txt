@@ -1,19 +1,21 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: Read and Diagnostic Output verified; writer implementation required before Write validation
+Phase: V-Sync write_candidate active; perform guarded Write validation
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
 2. Diagnostic Output 已於 2026-09-21 驗證通過，只推薦 GameUserSettings.ini。
-3. 實作並自動測試 Black Myth 專用 writer，再發布 exact write_candidate。
-4. Rule 生效後逐項測試 Apply、Game Persistence、Read-back 與 Restore。
+3. 使用 Game Setting Aligner Agent 0.08.8，按 Check Rules 載入 verification-rules-v1.2.7。
+4. 確認狀態為 write_candidate: verified，且只有 V-Sync 可寫入。
+5. 關閉遊戲與 Steam Cloud 後，測試 V-Sync Apply、Game Persistence、Read-back 與 Restore。
 
 English Instructions
 1. Read passed on 2026-09-21 using the 9-setting schema.
 2. Diagnostic Output passed on 2026-09-21 with only GameUserSettings.ini recommended.
-3. Implement and automatically test a Black Myth writer before publishing an exact write_candidate rule.
-4. Test Write only after that rule is active, then capture backup and restoration evidence.
+3. Use Game Setting Aligner Agent 0.08.8 and Check Rules to load verification-rules-v1.2.7.
+4. Confirm write_candidate: verified and that V-Sync is the only writable setting.
+5. With the game and Steam Cloud closed, test V-Sync Apply, persistence, read-back, and restore.
 
 停止條件 / Stop Conditions
 - 只能修改 GameUserSettings.ini / Modify only GameUserSettings.ini.
