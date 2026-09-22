@@ -1,5 +1,22 @@
 # Changelog
 
+# v0.08.8 (2026-09-21)
+
+### Added
+- Black Myth: Wukong Steam build 21393610 can test guarded V-Sync writes against its exact verified configuration fingerprint.
+- Diagnostic export completion now provides an **Open Folder** action.
+
+### Safety
+- Black Myth writes synchronize both Unreal `bUseVSync` and `UISettingData.Vsync` while modifying only `GameUserSettings.ini`.
+- Candidate controls follow each verification rule's `supported_settings` allowlist; unsupported settings are not offered for Apply.
+- Older clients cannot install the Black Myth write-candidate rule.
+
+### Validation
+- Black Myth V-Sync passed writer-to-parser round-trip tests using synthetic and accepted anonymized real-game configs.
+- Guarded write coverage confirms automatic backup and parser read-back.
+
+---
+
 # v0.08.7 (2026-09-17)
 
 ### Fixed

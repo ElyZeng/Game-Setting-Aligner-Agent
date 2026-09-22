@@ -59,6 +59,13 @@ def _replace_ini_value(content: str, key: str, new_value: str) -> str:
     return content
 
 
+def _replace_black_myth_ui_value(content: str, key: str, new_value: str) -> str:
+    pattern = re.compile(
+        rf'(\(\s*"{re.escape(key)}"\s*,\s*")[^"]*("\s*\))'
+    )
+    return pattern.sub(lambda match: f"{match.group(1)}{new_value}{match.group(2)}", content)
+
+
 def _replace_valve_kv_value(content: str, key: str, new_value: str) -> str:
     """Replace a Valve KV ``"key" "value"`` entry."""
     pattern = re.compile(
@@ -337,6 +344,37 @@ def _write_unreal_ini(
         preset_to_int = {"Low": "0", "Medium": "1", "High": "2", "Ultra": "3", "Custom": "-1"}
         gcp_val = preset_to_int.get(val, "-1")
         result = _replace_ini_value(result, "GPUConfigPreset", gcp_val)
+
+    return result
+
+
+def _write_black_myth_ini(
+    content: str, settings: Dict[str, Optional[str]]
+) -> str:
+    result = _write_unreal_ini(content, settings)
+
+    resolution = settings.get(RESOLUTION)
+    if resolution and "x" in resolution:
+        width, height = resolution.split("x", 1)
+        result = _replace_ini_value(result, "LastUserConfirmedDesiredScreenWidth", width.strip())
+        result = _replace_ini_value(result, "LastUserConfirmedDesiredScreenHeight", height.strip())
+
+    screen_mode = settings.get(SCREEN_MODE)
+    screen_mode_values = {
+        "Fullscreen": "0",
+        "Borderless Windowed": "1",
+        "Windowed": "2",
+    }
+    if screen_mode in screen_mode_values:
+        result = _replace_black_myth_ui_value(
+            result, "ScreenMode", screen_mode_values[screen_mode]
+        )
+
+    vsync = settings.get(VSYNC)
+    if vsync is not None:
+        result = _replace_black_myth_ui_value(
+            result, "Vsync", "1" if vsync == "On" else "0"
+        )
 
     return result
 
@@ -654,13 +692,15 @@ def _write_cs2_video(
 def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> str:
     """Detect which parser type a game uses, returning a type string.
 
-    Returns one of: ``"cyberpunk"``, ``"unreal_ini"``, ``"forza_xml"``,
-    ``"registry_json"``, ``"cs2"``, ``"unknown"``.
+    Returns one of: ``"cyberpunk"``, ``"black_myth"``, ``"unreal_ini"``,
+    ``"forza_xml"``, ``"registry_json"``, ``"cs2"``, ``"unknown"``.
     """
     name_lower = game_name.lower()
 
     if "cyberpunk" in name_lower:
         return "cyberpunk"
+    if ("black myth" in name_lower or "wukong" in name_lower) and "benchmark" not in name_lower:
+        return "black_myth"
     if "counter-strike" in name_lower or "cs2" in name_lower:
         return "cs2"
     if "forza" in name_lower:
@@ -744,6 +784,20 @@ def write_settings(
                 break
         else:
             results.append({"path": "", "status": "skipped", "detail": "No UserSettings.json found"})
+
+    elif parser_type == "black_myth":
+        for cfg in readable:
+            path = cfg["expanded_path"]
+            if Path(path).name.casefold() == "gameusersettings.ini":
+                try:
+                    new_content = _write_black_myth_ini(cfg["content"], to_write)
+                    _safe_write(path, new_content)
+                    results.append({"path": path, "status": "ok", "detail": "Black Myth settings written"})
+                except Exception as e:
+                    results.append({"path": path, "status": "error", "detail": str(e)})
+                break
+        else:
+            results.append({"path": "", "status": "skipped", "detail": "No GameUserSettings.ini found"})
 
     elif parser_type == "unreal_ini":
         for cfg in readable:

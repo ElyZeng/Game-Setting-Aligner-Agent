@@ -77,12 +77,14 @@
     "platform": "Steam",
     "version": "Steam build 21393610",
     "fingerprint": "6681478b79e4f536a8caad72c2ca8668ab88e1f1b0aea2aaa52c289dd260318f",
-    "status": "read_verified",
+    "status": "write_candidate",
     "config_patterns": [
       "%LOCALAPPDATA%/b1/Saved/Config/Windows/GameUserSettings.ini"
     ],
-    "supported_settings": [],
+    "supported_settings": [
+      "vsync"
+    ],
     "reader_id": "black-myth-parser",
-    "writer_id": null
+    "writer_id": "black-myth-ini-writer"
   }
 ]

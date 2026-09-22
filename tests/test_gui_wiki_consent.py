@@ -17,6 +17,17 @@ def test_open_export_folder_opens_zip_parent(monkeypatch, tmp_path):
     assert opened == [output.parent]
 
 
+def test_write_candidate_controls_follow_supported_settings():
+    verification = {
+        "status": "write_candidate",
+        "rule": {"supported_settings": ["vsync"]},
+    }
+
+    assert gui_app._verification_allows_setting(verification, "vsync") is True
+    assert gui_app._verification_allows_setting(verification, "resolution") is False
+    assert gui_app._verification_allows_setting({"status": "read_verified"}, "vsync") is False
+
+
 class FakeWikiClient:
     def __init__(self, states):
         self.states = dict(states)
