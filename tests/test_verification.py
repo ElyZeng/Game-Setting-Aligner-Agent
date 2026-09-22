@@ -51,7 +51,7 @@ def test_reviewed_rules_enable_all_black_myth_retail_writer_settings():
     }
     for rule in rules:
         assert rule["version"] == "Steam build 21393610"
-        assert rule["status"] == "write_candidate"
+        assert rule["status"] == "write_verified"
         assert rule["supported_settings"] == ["resolution", "screen_mode", "vsync"]
         assert rule["writer_id"] == "black-myth-ini-writer"
 

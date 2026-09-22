@@ -1,15 +1,15 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: Full writable-setting candidate validation paused for client 0.08.10 and rules v1.2.11
+Phase: Resolution, Screen Mode, and V-Sync write verified
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
 2. Diagnostic Output 已於 2026-09-21 驗證通過，只推薦 GameUserSettings.ini。
 3. 先前測試後發現 rule fingerprint 不符合 GUI 的完整 27-file fingerprint，因此不列為有效 promotion 證據。
 4. Resolution 變更與遊戲持久化通過；遊戲移除兩個 transient desired-resolution keys，導致 0.08.9 無法匹配還原前的第二個合法 fingerprint。
-5. 改用 0.08.10 與 rules v1.2.11，確認 write_candidate: verified，且只顯示 Resolution、Screen Mode、V-Sync 三個可寫入欄位。
-6. 先完成 Resolution Restore，再依序測試 Screen Mode、V-Sync；每項都要完成 Apply、Game Persistence、Read-back 與 Restore。
+5. 使用 0.08.10 與 rules v1.2.11，Resolution Restore 成功；Resolution、Screen Mode、V-Sync 均通過 Apply、Game Persistence、Read-back 與 Restore。
+6. 27 個 Config 檔案均存在；26 個非目標 INI 與最新備份一致，只有 GameUserSettings.ini 因最後還原寫入而不同。
 7. Frame Limit、Dynamic Resolution、Upscaling Method、Upscaling Mode、Frame Generation、Quick Preset 仍不可寫入。
 
 English Instructions
@@ -17,8 +17,8 @@ English Instructions
 2. Diagnostic Output passed on 2026-09-21 with only GameUserSettings.ini recommended.
 3. The prior test used a rule fingerprint that did not match the GUI's complete 27-file fingerprint, so it is not valid promotion evidence.
 4. The Resolution change and game persistence passed; the game then removed two transient desired-resolution keys, preventing client 0.08.9 from matching the second valid fingerprint before restore.
-5. Use client 0.08.10 and rules v1.2.11; confirm write_candidate: verified and that only Resolution, Screen Mode, and V-Sync are writable.
-6. Complete Resolution Restore first, then test Screen Mode and V-Sync; each must pass Apply, game persistence, parser read-back, and restore.
+5. With client 0.08.10 and rules v1.2.11, Resolution Restore succeeded; Resolution, Screen Mode, and V-Sync all passed Apply, game persistence, parser read-back, and restore.
+6. All 27 config files remain present; 26 non-target INI files match the latest backup and only GameUserSettings.ini differs due to the final restore write.
 7. Frame Limit, Dynamic Resolution, Upscaling Method, Upscaling Mode, Frame Generation, and Quick Preset remain blocked.
 
 停止條件 / Stop Conditions
