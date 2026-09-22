@@ -76,8 +76,8 @@
     "game": "Black Myth: Wukong",
     "platform": "Steam",
     "version": "Steam build 21393610",
-    "fingerprint": "6681478b79e4f536a8caad72c2ca8668ab88e1f1b0aea2aaa52c289dd260318f",
-    "status": "write_verified",
+    "fingerprint": "7a680d37bf9186fe2585b3807a8ea45f8c5c372807f5a571722c1873326db41f",
+    "status": "write_candidate",
     "config_patterns": [
       "%LOCALAPPDATA%/b1/Saved/Config/Windows/GameUserSettings.ini"
     ],

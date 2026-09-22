@@ -40,14 +40,14 @@ def test_reviewed_rules_preserve_current_writable_games():
     assert {"Cyberpunk 2077", "F1 25", "Forza Horizon 6"} <= writable_games
 
 
-def test_reviewed_rules_verify_black_myth_retail_vsync_write():
+def test_reviewed_rules_enable_black_myth_retail_vsync_candidate():
     rule = next(
         rule for rule in _reviewed_rules()
         if rule["game"] == "Black Myth: Wukong" and rule["platform"] == "Steam"
     )
     assert rule["version"] == "Steam build 21393610"
-    assert rule["fingerprint"] == "6681478b79e4f536a8caad72c2ca8668ab88e1f1b0aea2aaa52c289dd260318f"
-    assert rule["status"] == "write_verified"
+    assert rule["fingerprint"] == "7a680d37bf9186fe2585b3807a8ea45f8c5c372807f5a571722c1873326db41f"
+    assert rule["status"] == "write_candidate"
     assert rule["supported_settings"] == ["vsync"]
     assert rule["writer_id"] == "black-myth-ini-writer"
 
@@ -200,6 +200,80 @@ def test_verified_game_still_requires_test_write_consent(tmp_path):
     }), encoding="utf-8")
     with pytest.raises(VerificationError, match="test_write_consent_required"):
         backup_and_write("Example", "Steam", "1.0", [], {"vsync": "On"}, lambda *_: [], registry)
+
+
+def test_guarded_write_rechecks_live_file_fingerprint(tmp_path):
+    config_path = tmp_path / "GameUserSettings.ini"
+    stale_content = "VSync=True\n"
+    config_path.write_text("VSync=True\nNewGameGeneratedKey=1\n", encoding="utf-8")
+    stale_files = [{
+        "expanded_path": str(config_path),
+        "found": True,
+        "content": stale_content,
+    }]
+    registry = VerificationRegistry("0.08.8", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    registry.current_path.write_text(json.dumps({
+        "format_version": 1,
+        "manifest_version": "test",
+        "minimum_client_version": "0.08.8",
+        "games": [{
+            "game": "Example",
+            "platform": "Steam",
+            "version": "1.0",
+            "fingerprint": structural_fingerprint(stale_files),
+            "status": "write_candidate",
+            "config_patterns": [],
+            "supported_settings": ["vsync"],
+            "reader_id": "example-parser",
+            "writer_id": "example-writer",
+        }],
+    }), encoding="utf-8")
+    writes = []
+
+    with pytest.raises(VerificationError, match="write_not_allowed:fingerprint_mismatch"):
+        backup_and_write(
+            "Example", "Steam", "1.0", stale_files, {"vsync": "Off"},
+            lambda *_args: writes.append(True) or [], registry,
+        )
+
+    assert writes == []
+
+
+def test_guarded_write_rejects_file_removed_after_scan(tmp_path):
+    config_path = tmp_path / "GameUserSettings.ini"
+    stale_files = [{
+        "expanded_path": str(config_path),
+        "found": True,
+        "content": "VSync=True\n",
+    }]
+    registry = VerificationRegistry("0.08.9", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    registry.current_path.write_text(json.dumps({
+        "format_version": 1,
+        "manifest_version": "test",
+        "minimum_client_version": "0.08.9",
+        "games": [{
+            "game": "Example",
+            "platform": "Steam",
+            "version": "1.0",
+            "fingerprint": structural_fingerprint(stale_files),
+            "status": "write_candidate",
+            "config_patterns": [],
+            "supported_settings": ["vsync"],
+            "reader_id": "example-parser",
+            "writer_id": "example-writer",
+        }],
+    }), encoding="utf-8")
+    writes = []
+
+    with pytest.raises(VerificationError, match="write_not_allowed:fingerprint_mismatch"):
+        backup_and_write(
+            "Example", "Steam", "1.0", stale_files, {"vsync": "Off"},
+            lambda *_args: writes.append(True) or [], registry,
+        )
+
+    assert writes == []
 
 
 def test_forza_rejects_vsync_on_with_unlimited_frame_limit_before_write(tmp_path):
@@ -566,6 +640,34 @@ def test_remote_rule_overrides_builtin_rule(tmp_path):
     }), encoding="utf-8")
 
     assert registry.status_for("Counter-Strike 2", "Steam", "unknown", "anything")["status"] == "deprecated"
+
+
+def test_exact_platform_fingerprint_mismatch_is_not_reported_as_version_mismatch(tmp_path):
+    registry = VerificationRegistry("0.08.8", data_dir=tmp_path)
+    registry.current_path.write_text(json.dumps({
+        "format_version": 1,
+        "manifest_version": "test",
+        "minimum_client_version": "0.08.8",
+        "games": [{
+            "game": "Black Myth: Wukong",
+            "platform": "Steam",
+            "version": "Steam build 21393610",
+            "fingerprint": "expected",
+            "status": "write_candidate",
+            "config_patterns": [],
+            "supported_settings": ["vsync"],
+            "reader_id": "black-myth-parser",
+            "writer_id": "black-myth-ini-writer",
+        }],
+    }), encoding="utf-8")
+
+    result = registry.status_for(
+        "Black Myth: Wukong", "Steam", "Steam build 21393610", "actual"
+    )
+
+    assert result["status"] == "candidate"
+    assert result["reason"] == "fingerprint_mismatch"
+    assert result["rule"] is None
 
 
 @pytest.mark.parametrize(
