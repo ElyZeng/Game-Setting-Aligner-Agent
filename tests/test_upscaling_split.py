@@ -94,7 +94,7 @@ def test_black_myth_reports_percentage_upscaling_mode(percentage, expected):
 
 def test_black_myth_exposes_percentage_upscaling_modes():
     assert setting_options_for_game("Black Myth: Wukong", "upscaling") == [
-        "—", "Off", "XeSS",
+        "—", "TSR", "NXSR", "FSR3", "XeSS",
     ]
     assert setting_options_for_game(
         "Black Myth: Wukong", "upscaling_mode", upscaling_method="XeSS",
@@ -108,10 +108,11 @@ def test_black_myth_exposes_percentage_upscaling_modes():
     ]
 
 
-def test_black_myth_hides_percentage_modes_when_upscaling_is_off():
-    assert setting_options_for_game(
-        "Black Myth: Wukong", "upscaling_mode", upscaling_method="Off",
-    ) == ["—"]
+@pytest.mark.parametrize("method", ["TSR", "NXSR", "FSR3", "XeSS"])
+def test_black_myth_exposes_percentage_modes_for_each_method(method):
+    assert "Balanced (66%)" in setting_options_for_game(
+        "Black Myth: Wukong", "upscaling_mode", upscaling_method=method,
+    )
 
 
 def test_black_myth_exposes_retail_frame_generation_and_preset_options():

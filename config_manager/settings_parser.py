@@ -329,9 +329,9 @@ def setting_options_for_game(
         if "benchmark" in name and key == UPSCALING:
             return ["—", "TSR", "FSR", "XeSS"]
         if key == UPSCALING:
-            return ["—", "Off", "XeSS"]
+            return ["—", "TSR", "NXSR", "FSR3", "XeSS"]
         if key == UPSCALING_MODE:
-            if "benchmark" in name or upscaling_method in {None, "Off"}:
+            if "benchmark" in name or upscaling_method is None:
                 return ["—"]
             return [
                 "—",
@@ -340,7 +340,7 @@ def setting_options_for_game(
         if key == FRAME_GENERATION:
             if "benchmark" in name:
                 return ["—", "Off", "On"] if upscaling_method in {"TSR", "FSR"} else ["—"]
-            return ["—", "Off", "Auto"]
+            return ["—", "Off", "Auto"] if upscaling_method == "XeSS" else ["—", "Off"]
         if key == QUICK_PRESET:
             return ["—", "Custom", "Low", "Medium", "High", "Very High", "Cinematic"]
     if "street fighter" in name or "streetfighter" in name:
@@ -590,7 +590,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
     else:
         confirmed_width = None
         confirmed_height = None
-    if not borderless and (confirmed_width is None or confirmed_height is None):
+    if benchmark and not borderless and (confirmed_width is None or confirmed_height is None):
         confirmed_width = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenWidth"))
         confirmed_height = _parse_positive_int(ini_values.get("LastUserConfirmedDesiredScreenHeight"))
     if confirmed_width is not None and confirmed_height is not None:
@@ -633,10 +633,15 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
 
     super_resolution = ui_values.get("SuperResolutionSampling")
     if super_resolution is not None:
-        mapping = {"3": "XeSS"} if benchmark else {"0": "Off", "1": "XeSS"}
+        mapping = {"3": "XeSS"} if benchmark else {
+            "0": "FSR3",
+            "1": "XeSS",
+            "3": "TSR",
+            "5": "NXSR",
+        }
         r[UPSCALING] = mapping.get(super_resolution, f"Super Resolution (mode {super_resolution})")
         resolution_quality = _parse_positive_int(ini_values.get("sg.ResolutionQuality"))
-        if not benchmark and r[UPSCALING] != "Off" and resolution_quality is not None:
+        if not benchmark and resolution_quality is not None:
             r[UPSCALING_MODE] = _black_myth_upscaling_mode(resolution_quality)
         else:
             r[UPSCALING_MODE] = "N/A"
@@ -645,6 +650,8 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
     if insert_frame is not None:
         if benchmark and r[UPSCALING] == "XeSS":
             r[FRAME_GENERATION] = "N/A"
+        elif not benchmark and r[UPSCALING] != "XeSS":
+            r[FRAME_GENERATION] = "Off"
         else:
             r[FRAME_GENERATION] = {
                 "0": "Off",

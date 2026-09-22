@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from config_manager.settings_parser import extract_key_settings, setting_options_for_game
 from config_manager.settings_writer import write_settings
 from config_manager.verification import backup_and_write
@@ -11,6 +13,19 @@ def test_black_myth_dynamic_resolution_is_not_available():
     assert setting_options_for_game(
         "Black Myth: Wukong", "dynamic_resolution", "N/A"
     ) == ["—"]
+
+
+def test_black_myth_retail_upscaling_and_frame_generation_options():
+    assert setting_options_for_game("Black Myth: Wukong", "upscaling") == [
+        "—", "TSR", "NXSR", "FSR3", "XeSS",
+    ]
+    assert setting_options_for_game(
+        "Black Myth: Wukong", "frame_generation", upscaling_method="XeSS"
+    ) == ["—", "Off", "Auto"]
+    for method in ("TSR", "NXSR", "FSR3"):
+        assert setting_options_for_game(
+            "Black Myth: Wukong", "frame_generation", upscaling_method=method
+        ) == ["—", "Off"]
 
 
 def test_black_myth_vsync_round_trip_only_writes_game_user_settings(tmp_path):
@@ -108,7 +123,13 @@ def test_black_myth_upscaling_mode_round_trip_uses_render_percentage(tmp_path):
     content = """[ScalabilityGroups]
 sg.ResolutionQuality=100
 [/Script/GSGameSettings.GSGameUserSettings]
-UISettingData=(("SuperResolutionSampling", "1"))
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+DesiredScreenWidth=1920
+DesiredScreenHeight=1080
+LastUserConfirmedDesiredScreenWidth=1920
+LastUserConfirmedDesiredScreenHeight=1080
+UISettingData=(("ImageQuality", "1080"),("SuperResolutionSampling", "1"))
 """
     settings_path.write_text(content, encoding="utf-8")
 
@@ -124,10 +145,39 @@ UISettingData=(("SuperResolutionSampling", "1"))
         [{"expanded_path": str(settings_path), "found": True, "content": written}],
     )
     assert "sg.ResolutionQuality=66" in written
+    assert '("ImageQuality", "713")' in written
+    assert "DesiredScreenWidth=1267" in written
+    assert "DesiredScreenHeight=712" in written
+    assert "LastUserConfirmedDesiredScreenWidth=1267" in written
+    assert "LastUserConfirmedDesiredScreenHeight=712" in written
     assert parsed["upscaling_mode"] == "Balanced (66%)"
 
 
-def test_black_myth_upscaling_method_round_trip_updates_ui_setting_data(tmp_path):
+def test_black_myth_render_resolution_does_not_replace_output_resolution():
+    content = """ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedDesiredScreenWidth=1267
+LastUserConfirmedDesiredScreenHeight=712
+sg.ResolutionQuality=66
+UISettingData=(("ImageQuality", "713"),("SuperResolutionSampling", "0"))
+"""
+
+    parsed = extract_key_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": "GameUserSettings.ini", "found": True, "content": content}],
+    )
+
+    assert parsed["resolution"] == "1920x1080"
+    assert parsed["upscaling_mode"] == "Balanced (66%)"
+
+
+@pytest.mark.parametrize(
+    ("method", "stored_value"),
+    [("FSR3", "0"), ("XeSS", "1"), ("TSR", "3"), ("NXSR", "5")],
+)
+def test_black_myth_upscaling_method_round_trip_updates_ui_setting_data(
+    tmp_path, method, stored_value
+):
     settings_path = tmp_path / "GameUserSettings.ini"
     content = """[ScalabilityGroups]
 sg.ResolutionQuality=66
@@ -139,7 +189,7 @@ UISettingData=(("SuperResolutionSampling", "1"))
     write_settings(
         "Black Myth: Wukong",
         [{"expanded_path": str(settings_path), "found": True, "content": content}],
-        {"upscaling": "Off"},
+        {"upscaling": method},
     )
 
     written = settings_path.read_text(encoding="utf-8")
@@ -147,9 +197,41 @@ UISettingData=(("SuperResolutionSampling", "1"))
         "Black Myth: Wukong",
         [{"expanded_path": str(settings_path), "found": True, "content": written}],
     )
+    assert f'("SuperResolutionSampling", "{stored_value}")' in written
+    assert parsed["upscaling"] == method
+
+
+def test_black_myth_non_xess_method_forces_frame_generation_off(tmp_path):
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = 'UISettingData=(("SuperResolutionSampling", "1"),("InsertFrame", "1"))\n'
+    settings_path.write_text(content, encoding="utf-8")
+
+    write_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": str(settings_path), "found": True, "content": content}],
+        {"upscaling": "FSR3"},
+    )
+
+    written = settings_path.read_text(encoding="utf-8")
     assert '("SuperResolutionSampling", "0")' in written
-    assert parsed["upscaling"] == "Off"
-    assert parsed["upscaling_mode"] == "N/A"
+    assert '("InsertFrame", "0")' in written
+    parsed = extract_key_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": str(settings_path), "found": True, "content": written}],
+    )
+    assert parsed["frame_generation"] == "Off"
+
+
+def test_black_myth_non_xess_parser_ignores_stale_frame_generation():
+    content = 'UISettingData=(("SuperResolutionSampling", "3"),("InsertFrame", "1"))\n'
+
+    parsed = extract_key_settings(
+        "Black Myth: Wukong",
+        [{"expanded_path": "GameUserSettings.ini", "found": True, "content": content}],
+    )
+
+    assert parsed["upscaling"] == "TSR"
+    assert parsed["frame_generation"] == "Off"
 
 
 def test_black_myth_guarded_write_supports_all_writable_settings(tmp_path):
