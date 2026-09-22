@@ -1,7 +1,7 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: Full 9-setting write candidate validation with client 0.08.11 and rules v1.2.13
+Phase: Eight-setting write candidate validation with client 0.08.12 and rules v1.2.14
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
@@ -11,8 +11,9 @@ Phase: Full 9-setting write candidate validation with client 0.08.11 and rules v
 5. 使用 0.08.10 與 rules v1.2.11，Resolution Restore 成功；Resolution、Screen Mode、V-Sync 均通過 Apply、Game Persistence、Read-back 與 Restore。
 6. 27 個 Config 檔案均存在；26 個非目標 INI 與最新備份一致，只有 GameUserSettings.ini 因最後還原寫入而不同。
 7. Resolution、Screen Mode、V-Sync 的既有 live validation 保留。
-8. 依序測試 Frame Limit、Dynamic Resolution、Upscaling Method、Upscaling Mode、Frame Generation、Quick Preset；每項都要完成 Apply、Game Persistence、Read-back 與 Restore。
-9. Upscaling Mode 顯示檔位與實際渲染比例，例如 Performance (50%)、Balanced (66%)、Quality (75%)。
+8. Dynamic Resolution 標記為 N/A，不進行寫入測試。
+9. 依序測試 Frame Limit、Upscaling Method、Upscaling Mode、Frame Generation、Quick Preset；每項都要完成 Apply、Game Persistence、Read-back 與 Restore。
+10. Upscaling Mode 顯示檔位與實際渲染比例，例如 Performance (50%)、Balanced (66%)、Quality (75%)。
 
 English Instructions
 1. Read passed on 2026-09-21 using the 9-setting schema.
@@ -22,8 +23,9 @@ English Instructions
 5. With client 0.08.10 and rules v1.2.11, Resolution Restore succeeded; Resolution, Screen Mode, and V-Sync all passed Apply, game persistence, parser read-back, and restore.
 6. All 27 config files remain present; 26 non-target INI files match the latest backup and only GameUserSettings.ini differs due to the final restore write.
 7. Existing live validation for Resolution, Screen Mode, and V-Sync remains valid.
-8. Test Frame Limit, Dynamic Resolution, Upscaling Method, Upscaling Mode, Frame Generation, and Quick Preset separately; each must pass Apply, game persistence, parser read-back, and restore.
-9. Upscaling Mode displays both a tier and its exact render ratio, such as Performance (50%), Balanced (66%), and Quality (75%).
+8. Dynamic Resolution is N/A and is not included in write validation.
+9. Test Frame Limit, Upscaling Method, Upscaling Mode, Frame Generation, and Quick Preset separately; each must pass Apply, game persistence, parser read-back, and restore.
+10. Upscaling Mode displays both a tier and its exact render ratio, such as Performance (50%), Balanced (66%), and Quality (75%).
 
 停止條件 / Stop Conditions
 - 只能修改 GameUserSettings.ini / Modify only GameUserSettings.ini.

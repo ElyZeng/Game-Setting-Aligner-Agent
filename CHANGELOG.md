@@ -1,14 +1,22 @@
 # Changelog
 
+# v0.08.12 (2026-09-22)
+
+### Fixed
+- Black Myth: Wukong now reports Dynamic Resolution as `N/A`; the retail game does not expose this as a supported graphics setting.
+- Dynamic Resolution has been removed from Black Myth's write allowlist and GUI choices.
+
+---
+
 # v0.08.11 (2026-09-22)
 
 ### Added
 - Black Myth: Wukong now reads and writes its percentage-based upscaling mode through `sg.ResolutionQuality`.
 - Upscaling modes are displayed as a familiar quality tier plus the exact render ratio, such as `Performance (50%)` and `Balanced (66%)`.
-- The Black Myth retail writer now covers all nine standard settings, including Frame Limit, Dynamic Resolution, Upscaling Method/Mode, Frame Generation, and Quick Preset.
+- The Black Myth retail writer now covers Frame Limit, Upscaling Method/Mode, Frame Generation, and Quick Preset in addition to the three previously verified settings.
 
 ### Safety
-- Black Myth returns to `write_candidate` while the six newly exposed settings complete live validation; both known structural fingerprints remain guarded.
+- Black Myth returns to `write_candidate` while the five newly exposed settings complete live validation; both known structural fingerprints remain guarded.
 
 ---
 
