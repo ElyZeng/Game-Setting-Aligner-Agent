@@ -1,21 +1,21 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: V-Sync write_candidate active; perform guarded Write validation
+Phase: V-Sync write verified
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
 2. Diagnostic Output 已於 2026-09-21 驗證通過，只推薦 GameUserSettings.ini。
-3. 使用 Game Setting Aligner Agent 0.08.8，按 Check Rules 載入 verification-rules-v1.2.7。
-4. 確認狀態為 write_candidate: verified，且只有 V-Sync 可寫入。
-5. 關閉遊戲與 Steam Cloud 後，測試 V-Sync Apply、Game Persistence、Read-back 與 Restore。
+3. V-Sync Write 已於 2026-09-22 完成 Apply、Game Persistence、Read-back 與 Restore 驗證。
+4. 自動備份已建立；26 個非目標 INI 與備份一致，只有 GameUserSettings.ini 於測試中變更。
+5. 只將 V-Sync 維持為已驗證可寫入設定；其他設定仍不可寫入。
 
 English Instructions
 1. Read passed on 2026-09-21 using the 9-setting schema.
 2. Diagnostic Output passed on 2026-09-21 with only GameUserSettings.ini recommended.
-3. Use Game Setting Aligner Agent 0.08.8 and Check Rules to load verification-rules-v1.2.7.
-4. Confirm write_candidate: verified and that V-Sync is the only writable setting.
-5. With the game and Steam Cloud closed, test V-Sync Apply, persistence, read-back, and restore.
+3. V-Sync Write passed Apply, game persistence, read-back, and restore on 2026-09-22.
+4. Automatic backup was created; 26 non-target INI files matched their backups and only GameUserSettings.ini changed during the test.
+5. Keep V-Sync as the only verified writable setting; all other settings remain blocked.
 
 停止條件 / Stop Conditions
 - 只能修改 GameUserSettings.ini / Modify only GameUserSettings.ini.
