@@ -1,5 +1,13 @@
 # Changelog
 
+# Verification Rules v1.2.12 (2026-09-22)
+
+### Verified
+- Black Myth: Wukong Resolution, Screen Mode, and V-Sync passed guarded Apply, in-game persistence, parser read-back, and restoration on Steam build 21393610.
+- Both observed structural variants are now `write_verified`; all other Black Myth settings remain blocked.
+
+---
+
 # v0.08.10 (2026-09-22)
 
 ### Fixed
