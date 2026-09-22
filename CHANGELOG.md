@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.11 (2026-09-22)
+
+### Added
+- Black Myth: Wukong now reads and writes its percentage-based upscaling mode through `sg.ResolutionQuality`.
+- Upscaling modes are displayed as a familiar quality tier plus the exact render ratio, such as `Performance (50%)` and `Balanced (66%)`.
+- The Black Myth retail writer now covers all nine standard settings, including Frame Limit, Dynamic Resolution, Upscaling Method/Mode, Frame Generation, and Quick Preset.
+
+### Safety
+- Black Myth returns to `write_candidate` while the six newly exposed settings complete live validation; both known structural fingerprints remain guarded.
+
+---
+
 # Verification Rules v1.2.12 (2026-09-22)
 
 ### Verified

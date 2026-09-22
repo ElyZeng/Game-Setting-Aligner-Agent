@@ -157,6 +157,19 @@ F1_SETTING_OPTIONS: Dict[str, List[str]] = {
     QUICK_PRESET: ["—", "Ultra Low", "Low", "Medium", "High", "Ultra High", "Ultra Max"],
 }
 
+BLACK_MYTH_UPSCALING_MODES = {
+    33: "Ultra Performance",
+    50: "Performance",
+    66: "Balanced",
+    75: "Quality",
+    100: "Native AA",
+}
+
+
+def _black_myth_upscaling_mode(percentage: int) -> str:
+    closest = min(BLACK_MYTH_UPSCALING_MODES, key=lambda value: abs(value - percentage))
+    return f"{BLACK_MYTH_UPSCALING_MODES[closest]} ({percentage}%)"
+
 FORZA_PRESET_SIGNATURES: Dict[str, Dict[str, str]] = {
     "Very Low": {"CarLOD": "0", "EnvStreamingTex": "0", "GeometryQuality": "0", "ReflectionQuality": "0", "SSRQuality": "0", "RTReflectionQuality": "0", "ShadowQuality": "0", "NightShadows": "0", "SSGIQuality": "0", "RTGIQuality": "0", "ShaderQuality": "0", "AudioQuality": "0", "DeformableSnowQuality": "0", "ParticlesSettings": "0", "VolumetricFogQuality": "0", "LensEffects": "0", "MotionBlurQuality": "0"},
     "Low": {"CarLOD": "0", "EnvStreamingTex": "0", "GeometryQuality": "1", "ReflectionQuality": "1", "SSRQuality": "1", "RTReflectionQuality": "0", "ShadowQuality": "1", "NightShadows": "0", "SSGIQuality": "0", "RTGIQuality": "0", "ShaderQuality": "1", "AudioQuality": "1", "DeformableSnowQuality": "0", "ParticlesSettings": "1", "VolumetricFogQuality": "1", "LensEffects": "1", "MotionBlurQuality": "0"},
@@ -313,10 +326,21 @@ def setting_options_for_game(
             return ["—", "Borderless Windowed", "Windowed"]
         if "benchmark" in name and key == UPSCALING:
             return ["—", "TSR", "FSR", "XeSS"]
+        if key == UPSCALING:
+            return ["—", "Off", "XeSS"]
         if key == UPSCALING_MODE:
-            return ["—"]
+            if "benchmark" in name or upscaling_method in {None, "Off"}:
+                return ["—"]
+            return [
+                "—",
+                *(f"{name} ({percentage}%)" for percentage, name in BLACK_MYTH_UPSCALING_MODES.items()),
+            ]
         if key == FRAME_GENERATION:
-            return ["—", "Off", "On"] if upscaling_method in {"TSR", "FSR"} else ["—"]
+            if "benchmark" in name:
+                return ["—", "Off", "On"] if upscaling_method in {"TSR", "FSR"} else ["—"]
+            return ["—", "Off", "Auto"]
+        if key == QUICK_PRESET:
+            return ["—", "Custom", "Low", "Medium", "High", "Very High", "Cinematic"]
     if "street fighter" in name or "streetfighter" in name:
         if key == UPSCALING_MODE:
             return ["—"]
@@ -609,7 +633,11 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
     if super_resolution is not None:
         mapping = {"3": "XeSS"} if benchmark else {"0": "Off", "1": "XeSS"}
         r[UPSCALING] = mapping.get(super_resolution, f"Super Resolution (mode {super_resolution})")
-        r[UPSCALING_MODE] = "N/A"
+        resolution_quality = _parse_positive_int(ini_values.get("sg.ResolutionQuality"))
+        if not benchmark and r[UPSCALING] != "Off" and resolution_quality is not None:
+            r[UPSCALING_MODE] = _black_myth_upscaling_mode(resolution_quality)
+        else:
+            r[UPSCALING_MODE] = "N/A"
 
     insert_frame = ui_values.get("InsertFrame")
     if insert_frame is not None:
@@ -621,7 +649,8 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
                 "1": "Auto",
             }.get(insert_frame, f"Mode {insert_frame}")
 
-    r[DYNAMIC_RESOLUTION] = "N/A"
+    if benchmark:
+        r[DYNAMIC_RESOLUTION] = "N/A"
 
     return r
 
