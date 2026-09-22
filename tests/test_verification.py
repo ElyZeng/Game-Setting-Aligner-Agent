@@ -49,6 +49,7 @@ def test_reviewed_rules_enable_all_black_myth_retail_writer_settings():
     assert {rule["fingerprint"] for rule in rules} == {
         "d4387b1827b144ce6b0fe8d8163f973268ee928d742276062f0924068dbc4843",
         "1198ec49c02647f504ab71f395df6d73ec36bfc650abad34094549c48a482dd1",
+        "3bb9659ab9341d238ae74e2f5b96e148ff065b8e3fd76155fe3a74eef94221f9",
     }
     for rule in rules:
         assert rule["version"] == "Steam build 21393610"

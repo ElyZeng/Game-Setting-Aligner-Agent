@@ -115,5 +115,27 @@
     ],
     "reader_id": "black-myth-parser",
     "writer_id": "black-myth-ini-writer"
+  },
+  {
+    "game": "Black Myth: Wukong",
+    "platform": "Steam",
+    "version": "Steam build 21393610",
+    "fingerprint": "3bb9659ab9341d238ae74e2f5b96e148ff065b8e3fd76155fe3a74eef94221f9",
+    "status": "write_candidate",
+    "config_patterns": [
+      "%LOCALAPPDATA%/b1/Saved/Config/Windows/GameUserSettings.ini"
+    ],
+    "supported_settings": [
+      "resolution",
+      "screen_mode",
+      "vsync",
+      "frame_limit",
+      "upscaling",
+      "upscaling_mode",
+      "frame_generation",
+      "quick_preset"
+    ],
+    "reader_id": "black-myth-parser",
+    "writer_id": "black-myth-ini-writer"
   }
 ]
