@@ -77,7 +77,7 @@
     "platform": "Steam",
     "version": "Steam build 21393610",
     "fingerprint": "d4387b1827b144ce6b0fe8d8163f973268ee928d742276062f0924068dbc4843",
-    "status": "write_candidate",
+    "status": "write_verified",
     "config_patterns": [
       "%LOCALAPPDATA%/b1/Saved/Config/Windows/GameUserSettings.ini"
     ],
@@ -99,7 +99,7 @@
     "platform": "Steam",
     "version": "Steam build 21393610",
     "fingerprint": "1198ec49c02647f504ab71f395df6d73ec36bfc650abad34094549c48a482dd1",
-    "status": "write_candidate",
+    "status": "write_verified",
     "config_patterns": [
       "%LOCALAPPDATA%/b1/Saved/Config/Windows/GameUserSettings.ini"
     ],
@@ -121,7 +121,7 @@
     "platform": "Steam",
     "version": "Steam build 21393610",
     "fingerprint": "3bb9659ab9341d238ae74e2f5b96e148ff065b8e3fd76155fe3a74eef94221f9",
-    "status": "write_candidate",
+    "status": "write_verified",
     "config_patterns": [
       "%LOCALAPPDATA%/b1/Saved/Config/Windows/GameUserSettings.ini"
     ],
