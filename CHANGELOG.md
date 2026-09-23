@@ -1,5 +1,13 @@
 # Changelog
 
+# v0.08.16 (2026-09-23)
+
+### Fixed
+- Black Myth: Wukong Quick Preset now leaves Ray Tracing quality independent, matching the game's observed Medium preset signature.
+- Quick Preset read-back validates the ten preset-owned scalability groups while preserving the separate render percentage and ray-tracing level.
+
+---
+
 # v0.08.15 (2026-09-22)
 
 ### Fixed

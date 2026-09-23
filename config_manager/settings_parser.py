@@ -37,7 +37,6 @@ BLACK_MYTH_SCALABILITY_KEYS = (
     "sg.AntiAliasingQuality",
     "sg.ShadowQuality",
     "sg.GlobalIlluminationQuality",
-    "sg.RayTracingQuality",
     "sg.ReflectionQuality",
     "sg.PostProcessQuality",
     "sg.TextureQuality",

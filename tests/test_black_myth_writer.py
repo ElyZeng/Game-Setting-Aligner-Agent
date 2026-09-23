@@ -324,10 +324,11 @@ UISettingData=(("ScreenMode", "2"),("Vsync", "1"),("SuperResolutionSampling", "1
     assert "sg.ResolutionQuality=66" in written
     for key in (
         "ViewDistance", "AntiAliasing", "Shadow", "GlobalIllumination",
-        "RayTracing", "Reflection", "PostProcess", "Texture", "Effects",
-        "Foliage", "Shading",
+        "Reflection", "PostProcess", "Texture", "Effects", "Foliage",
+        "Shading",
     ):
         assert f"sg.{key}Quality=2" in written
+    assert "sg.RayTracingQuality=0" in written
 
 
 def test_black_myth_parser_rejects_preset_label_when_scalability_differs():

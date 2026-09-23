@@ -1,7 +1,7 @@
 Game: Black Myth: Wukong
 Platform: Steam
 Issue: #6
-Phase: Quick Preset write candidate validation pending client 0.08.15 retest
+Phase: Complete; promote all supported settings with client 0.08.16
 
 中文指示
 1. Read 已於 2026-09-21 依 9-setting schema 驗證通過。
@@ -22,6 +22,10 @@ Phase: Quick Preset write candidate validation pending client 0.08.15 retest
 16. Frame Limit 先前已通過；目前只剩 Quick Preset 尚未完成 live validation，完成前維持 write_candidate。
 17. 0.08.14 的 Low → Medium 測試失敗：QualityLevel 已變成 2，但十一個 sg.*Quality 仍為 0，因此遊戲維持 Low。
 18. 0.08.15 同步寫入十一個 scalability groups，並在標籤與實際品質不一致時回報 Custom；需要重新測試 Low → Medium。
+19. 2026-09-23 的 Low → Medium 重測成功；遊戲採用十個一般 sg.*Quality=1，並保持獨立的 sg.RayTracingQuality=0 與 sg.ResolutionQuality=75。
+20. Parser read-back 正確回報 Medium 與 Quality (75%)；0.08.16 不再將 Ray Tracing 視為 Quick Preset 的一部分。
+21. Engine.ini 在遊戲啟動後新增六個 Windows 鍵盤協助工具 hotkey/confirmation 鍵；沒有圖形鍵，writer 仍只修改 GameUserSettings.ini。
+22. 所有支援寫入項目均已完成 live validation，三個已知 Steam fingerprint 可提升為 write_verified。
 
 English Instructions
 1. Read passed on 2026-09-21 using the 9-setting schema.
@@ -42,6 +46,10 @@ English Instructions
 16. Frame Limit passed previously. Quick Preset is the only remaining live validation item, so the rule remains write_candidate until it passes.
 17. The 0.08.14 Low-to-Medium test failed: QualityLevel changed to 2, but all eleven sg.*Quality values remained 0, so the game stayed on Low.
 18. Client 0.08.15 synchronizes all eleven scalability groups and reports Custom when the label disagrees with actual quality; Low-to-Medium requires a new live test.
+19. The Low-to-Medium retest passed on 2026-09-23. The game applied ten general sg.*Quality values at 1 while preserving independent sg.RayTracingQuality=0 and sg.ResolutionQuality=75.
+20. Parser read-back correctly reports Medium and Quality (75%); client 0.08.16 no longer treats Ray Tracing as part of Quick Preset.
+21. Engine.ini gained six Windows keyboard accessibility hotkey/confirmation keys after game launch; no graphics keys changed, and the writer still modifies only GameUserSettings.ini.
+22. Every supported writable setting has completed live validation, so all three known Steam fingerprints may be promoted to write_verified.
 
 停止條件 / Stop Conditions
 - 只能修改 GameUserSettings.ini / Modify only GameUserSettings.ini.
