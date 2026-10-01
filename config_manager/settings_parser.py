@@ -951,6 +951,71 @@ def _parse_forza_xml(content: str) -> Dict[str, Optional[str]]:
     return r
 
 
+def _parse_gta_enhanced_xml(content: str) -> Dict[str, Optional[str]]:
+    result = _empty_result()
+    try:
+        root = ET.fromstring(content)
+    except (ET.ParseError, ValueError):
+        return result
+
+    video = root.find("video")
+    if video is None:
+        return result
+
+    width = video.find("ScreenWidth")
+    height = video.find("ScreenHeight")
+    if width is not None and height is not None:
+        width_value = width.get("value")
+        height_value = height.get("value")
+        if width_value and height_value and width_value.isdigit() and height_value.isdigit():
+            result[RESOLUTION] = f"{width_value}x{height_value}"
+
+    vsync = video.find("VSync")
+    if vsync is not None:
+        result[VSYNC] = {"0": "Off", "1": "On"}.get(vsync.get("value"))
+
+    windowed = video.find("Windowed")
+    if windowed is not None:
+        result[SCREEN_MODE] = {"0": "Fullscreen", "1": "Windowed", "2": "Borderless Windowed", "3": "Borderless Fullscreen"}.get(windowed.get("value"))
+
+    frame_limit = video.find("FrameLimit")
+    if frame_limit is not None:
+        result[FRAME_LIMIT] = {"0": "Unlimited", "60": "60 FPS"}.get(frame_limit.get("value"))
+
+    scaling = root.find("./graphics/ResScalingType")
+    if scaling is not None and scaling.get("value") == "0":
+        result[UPSCALING] = "Off"
+    elif scaling is not None and scaling.get("value") == "1":
+        result[UPSCALING] = "Sampling"
+        sampling_mode = root.find("./graphics/SamplingMode")
+        if sampling_mode is not None:
+            saved_scales = {"0": "1/2", "1": "2/3", "8": "5/2"}
+            provisional_scales = {"2": "3/4", "3": "5/6", "4": "5/4", "5": "3/2", "6": "7/4", "7": "2/1"}
+            mode = sampling_mode.get("value")
+            result[UPSCALING_MODE] = saved_scales.get(mode) or provisional_scales.get(mode)
+    elif scaling is not None and scaling.get("value") == "2":
+        result[UPSCALING] = "FSR 1"
+        quality = root.find("./graphics/fsrQuality")
+        if quality is not None:
+            result[UPSCALING_MODE] = {"2": "Quality", "4": "Performance"}.get(quality.get("value"))
+        frame_generation = root.find("./graphics/FrameGenType")
+        if frame_generation is not None:
+            result[FRAME_GENERATION] = {"0": "Off"}.get(frame_generation.get("value"))
+    elif scaling is not None and scaling.get("value") == "3":
+        result[UPSCALING] = "FSR 3"
+        quality = root.find("./graphics/fsr3Quality")
+        if quality is not None:
+            result[UPSCALING_MODE] = {"0": "Performance", "1": "Balanced", "2": "Quality", "3": "Native AA"}.get(quality.get("value"))
+        frame_generation = root.find("./graphics/FrameGenType")
+        if frame_generation is not None:
+            result[FRAME_GENERATION] = {"0": "Off", "2": "AMD FSR 3"}.get(frame_generation.get("value"))
+
+    preset = root.find("./Presets/PresetLevel")
+    if preset is not None:
+        result[QUICK_PRESET] = {"0": "Custom", "1": "Lowest", "2": "High", "3": "High with Ray Tracing", "4": "Very High", "5": "Very High with Ray Tracing", "6": "Maximum with Ray Tracing"}.get(preset.get("value"))
+    return result
+
+
 # ── F1 25 hardware_settings_config.xml ─────────────────────────────
 
 def _parse_f1_xml(content: str) -> Dict[str, Optional[str]]:
@@ -1319,6 +1384,9 @@ def extract_key_settings(
 
     if "counter-strike" in name_lower or "cs2" in name_lower:
         return _parse_cs2(readable)
+
+    if "grand theft auto v enhanced" in name_lower:
+        return _parse_gta_enhanced_xml(_content_for("settings.xml"))
 
     if "forza" in name_lower:
         return _parse_forza_xml(_content_for("UserConfigSelections"))

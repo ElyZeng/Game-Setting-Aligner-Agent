@@ -199,6 +199,487 @@ class TestConfigExporterNoWiki:
         assert os.path.isfile(output)
 
 
+class TestGtaEnhancedParser:
+    def test_gta_xml_is_not_written_by_forza_fallback(self, tmp_path):
+        from config_manager.settings_writer import write_settings
+
+        config_path = tmp_path / "settings.xml"
+        content = '<Settings><video><VSync value="1"/></video></Settings>'
+        config_path.write_text(content, encoding="utf-8")
+
+        result = write_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": str(config_path)}],
+            {"vsync": "Off"},
+        )
+
+        assert result[0]["status"] == "skipped"
+        assert config_path.read_text(encoding="utf-8") == content
+
+    def test_reads_video_values_and_saved_scaling_off(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings>
+<video><ScreenWidth value="1920"/><ScreenHeight value="1080"/>
+<Windowed value="3"/><VSync value="1"/><FrameLimit value="0"/></video>
+<graphics><ResScalingType value="0"/><FrameGenType value="0"/></graphics>
+<Presets><PresetLevel value="2"/></Presets>
+</Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["resolution"] == "1920x1080"
+        assert result["vsync"] == "On"
+        assert result["screen_mode"] == "Borderless Fullscreen"
+        assert result["frame_limit"] == "Unlimited"
+        assert result["quick_preset"] == "High"
+        assert result["upscaling"] == "Off"
+
+    def test_reads_saved_fullscreen_mode(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="0"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="2"/><FrameGenType value="0"/>
+</graphics><Presets><PresetLevel value="2"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["screen_mode"] == "Fullscreen"
+        assert result["resolution"] == "1920x1080"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["frame_generation"] == "Off"
+        assert result["quick_preset"] == "High"
+
+    def test_reads_saved_very_high_preset(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="2"/><FrameGenType value="0"/>
+</graphics><Presets><PresetLevel value="4"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["quick_preset"] == "Very High"
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["frame_generation"] == "Off"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+    def test_reads_saved_high_with_ray_tracing_preset(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="2"/><FrameGenType value="0"/>
+</graphics><Presets><PresetLevel value="3"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["quick_preset"] == "High with Ray Tracing"
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["frame_generation"] == "Off"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+    def test_reads_saved_very_high_with_ray_tracing_preset(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="2"/><FrameGenType value="0"/>
+</graphics><Presets><PresetLevel value="5"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["quick_preset"] == "Very High with Ray Tracing"
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["frame_generation"] == "Off"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+    def test_reads_saved_maximum_with_ray_tracing_preset(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="2"/><FrameGenType value="0"/>
+</graphics><Presets><PresetLevel value="6"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["quick_preset"] == "Maximum with Ray Tracing"
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["frame_generation"] == "Off"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+    def test_reads_saved_lowest_preset(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="2"/><FrameGenType value="0"/>
+</graphics><Presets><PresetLevel value="1"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["quick_preset"] == "Lowest"
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["frame_generation"] == "Off"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+    def test_reads_saved_windowed_mode_and_coupled_resolution(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1904"/><ScreenHeight value="993"/><Windowed value="1"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><Presets><PresetLevel value="2"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["resolution"] == "1904x993"
+        assert result["screen_mode"] == "Windowed"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+        assert result["quick_preset"] == "High"
+
+    def test_reads_borderless_windowed_distinct_from_borderless_fullscreen(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Windowed"
+
+    def test_reads_saved_60_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="3"/>
+<VSync value="1"/><FrameLimit value="60"/>
+</video><Presets><PresetLevel value="2"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "60 FPS"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Fullscreen"
+        assert result["vsync"] == "On"
+        assert result["quick_preset"] == "High"
+
+    def test_reads_saved_fsr3_quality_without_stale_frame_generation(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="3"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="2"/>
+<FrameGenType value="0"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="0"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["frame_generation"] == "Off"
+        assert result["quick_preset"] == "Custom"
+
+    def test_reads_saved_fsr3_performance(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="3"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="0"/><fsrQuality value="2"/>
+<FrameGenType value="0"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="0"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Performance"
+        assert result["frame_generation"] == "Off"
+        assert result["quick_preset"] == "Custom"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Fullscreen"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+    def test_reads_saved_fsr3_balanced(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="1"/>
+<FrameGenType value="0"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="2"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Balanced"
+        assert result["frame_generation"] == "Off"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+        assert result["quick_preset"] == "High"
+
+    def test_reads_saved_fsr3_native_aa(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="3"/>
+<FrameGenType value="0"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="2"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Native AA"
+        assert result["frame_generation"] == "Off"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Windowed"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+        assert result["quick_preset"] == "High"
+
+    def test_reads_saved_fsr3_frame_generation(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="3"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="3"/><fsr3Quality value="2"/>
+<FrameGenType value="2"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="0"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_generation"] == "AMD FSR 3"
+        assert result["upscaling"] == "FSR 3"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["quick_preset"] == "Custom"
+        assert result["resolution"] == "1920x1080"
+        assert result["vsync"] == "On"
+
+    def test_reads_saved_fsr1_quality(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="3"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="2"/><fsrQuality value="2"/><fsr3Quality value="2"/>
+<FrameGenType value="0"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="0"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR 1"
+        assert result["upscaling_mode"] == "Quality"
+        assert result["frame_generation"] == "Off"
+        assert result["quick_preset"] == "Custom"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Fullscreen"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+    def test_reads_saved_fsr1_performance_and_frame_generation_off(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="3"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="2"/><fsrQuality value="4"/><fsr3Quality value="2"/>
+<FrameGenType value="0"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="0"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["upscaling"] == "FSR 1"
+        assert result["upscaling_mode"] == "Performance"
+        assert result["frame_generation"] == "Off"
+        assert result["quick_preset"] == "Custom"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Fullscreen"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+    def test_reads_saved_sampling_without_stale_fsr_quality(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="3"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="1"/><SamplingMode value="0"/>
+<fsrQuality value="2"/><fsr3Quality value="2"/>
+<FrameGenType value="0"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="0"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["upscaling"] == "Sampling"
+        assert result["upscaling_mode"] == "1/2"
+        assert result["frame_generation"] is None
+        assert result["quick_preset"] == "Custom"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Fullscreen"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+        next_scale = content.replace('<SamplingMode value="0"/>', '<SamplingMode value="1"/>')
+        next_result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": next_scale, "expanded_path": "settings.xml"}],
+        )
+        assert next_result["upscaling"] == "Sampling"
+        assert next_result["upscaling_mode"] == "2/3"
+        assert next_result["frame_generation"] is None
+
+        maximum_scale = content.replace('<SamplingMode value="0"/>', '<SamplingMode value="8"/>')
+        maximum_result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": maximum_scale, "expanded_path": "settings.xml"}],
+        )
+        assert maximum_result["upscaling"] == "Sampling"
+        assert maximum_result["upscaling_mode"] == "5/2"
+        assert maximum_result["frame_generation"] is None
+
+        provisional_scales = {
+            "2": "3/4",
+            "3": "5/6",
+            "4": "5/4",
+            "5": "3/2",
+            "6": "7/4",
+            "7": "2/1",
+        }
+        for code, label in provisional_scales.items():
+            scale = content.replace('<SamplingMode value="0"/>', f'<SamplingMode value="{code}"/>')
+            scale_result = extract_key_settings(
+                "Grand Theft Auto V Enhanced",
+                [{"found": True, "content": scale, "expanded_path": "settings.xml"}],
+            )
+            assert scale_result["upscaling"] == "Sampling"
+            assert scale_result["upscaling_mode"] == label
+            assert scale_result["frame_generation"] is None
+
+        for unknown_code in ("9", "99"):
+            unknown_scale = content.replace('<SamplingMode value="0"/>', f'<SamplingMode value="{unknown_code}"/>')
+            unknown_result = extract_key_settings(
+                "Grand Theft Auto V Enhanced",
+                [{"found": True, "content": unknown_scale, "expanded_path": "settings.xml"}],
+            )
+            assert unknown_result["upscaling_mode"] is None
+
+    def test_reads_saved_scaling_off_without_stale_graphics_values(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = """<Settings><video>
+<ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="3"/>
+<VSync value="1"/><FrameLimit value="0"/>
+</video><graphics>
+<ResScalingType value="0"/><SamplingMode value="0"/>
+<fsrQuality value="2"/><fsr3Quality value="2"/>
+<FrameGenType value="0"/><fsr3FrameGenMode value="1"/>
+</graphics><Presets><PresetLevel value="0"/></Presets></Settings>"""
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["upscaling"] == "Off"
+        assert result["upscaling_mode"] is None
+        assert result["frame_generation"] is None
+        assert result["quick_preset"] == "Custom"
+        assert result["resolution"] == "1920x1080"
+        assert result["screen_mode"] == "Borderless Fullscreen"
+        assert result["vsync"] == "On"
+        assert result["frame_limit"] == "Unlimited"
+
+
 class TestStreetFighterParser:
     def test_parse_config_ini(self):
         from config_manager.settings_parser import extract_key_settings
