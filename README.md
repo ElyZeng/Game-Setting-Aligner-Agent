@@ -37,6 +37,102 @@
 
 ---
 
+## 架構總覽 / Architecture Overview
+
+這張圖可以用來在約 3 分鐘內說明 Game Tuner 的完整機制：
+
+```mermaid
+flowchart LR
+  subgraph Entry[使用入口]
+    GUI[GUI\nCustomTkinter]
+    CLI[CLI\nJSON commands]
+    API[External API\nHTTP JSON]
+  end
+
+  subgraph Discover[發現遊戲與設定位置]
+    Scanner[Platform scanners\nSteam / Epic / GOG]
+    Wiki[PCGamingWiki API\nconfig paths]
+    Detect[Config detection\nfile / registry]
+  end
+
+  subgraph Core[共用核心 Config Manager]
+    Reader[Reader\nJSON / XML / INI / KV]
+    Parser[Settings parser\ngame-specific adapters]
+    Model[Normalized settings\ncommon keys + options]
+    Writer[Settings writer\ngame-specific adapters]
+    Verify[Verification registry\nversion + fingerprint + consent]
+    Backup[Backup and write]
+    Export[Export / import\nbackup packages]
+  end
+
+  subgraph Games[本機遊戲資料]
+    Files[Game config files\nUserSettings.json / XML / INI / VCFG]
+    Registry[Windows Registry]
+  end
+
+  GUI --> Core
+  CLI --> Core
+  API --> Core
+
+  Scanner --> GUI
+  Scanner --> CLI
+  Scanner --> API
+  Wiki --> Detect
+  Detect --> Reader
+  Files --> Detect
+  Registry --> Detect
+
+  Reader --> Parser --> Model
+  Model --> GUI
+  Model --> CLI
+  Model --> API
+
+  GUI -->|user changes| Model
+  CLI -->|apply settings| Model
+  API -->|apply settings| Model
+  Model --> Writer
+  Writer --> Verify
+  Verify -->|approved| Backup
+  Backup --> Files
+  Backup --> Registry
+  Backup --> Export
+  Export --> GUI
+  Export --> CLI
+
+  classDef entry fill:#17324d,stroke:#8ecae6,color:#fff
+  classDef core fill:#315c4c,stroke:#b7e4c7,color:#fff
+  classDef data fill:#6b4f3a,stroke:#f4c095,color:#fff
+  class GUI,CLI,API entry
+  class Scanner,Wiki,Detect,Reader,Parser,Model,Writer,Verify,Backup,Export core
+  class Files,Registry data
+```
+
+### 3 分鐘說法 / Three-minute explanation
+
+1. **先從入口開始**：使用者可以從 GUI、CLI 或 HTTP API 操作，但三者最後都進入同一套 `config_manager`，因此不會各自維護一套設定邏輯。
+2. **再說讀取流程**：工具先透過 Steam、Epic、GOG 掃描已安裝遊戲，並用 PCGamingWiki 找出該遊戲的設定路徑；接著偵測檔案或 Registry，讀取 JSON、XML、INI、VCFG 等格式。
+3. **強調正規化**：每款遊戲的原始格式不同，但 parser 會把它們轉成共同的設定模型，例如解析度、VSync、幀率上限與 upscaling，讓 GUI、CLI 和 API 都能用同一種資料表示。
+4. **說明安全寫入**：使用者修改共同模型後，writer 再把設定轉回該遊戲專用格式。真正寫入前會檢查遊戲版本、設定結構 fingerprint、verification rule 與使用者同意；通過後先備份，再寫回原始檔案。
+5. **最後收斂成閉環**：寫入結果可以重新讀取驗證，也可以匯出成 JSON 備份或診斷資料。簡單說，這是一個「多入口、單一核心、遊戲專用 adapter、受控寫入」的設定管理工具。
+
+### 一句話版本 / One-liner
+
+> Game Tuner 把不同平台、不同遊戲、不同設定格式，轉成同一套可讀、可比較、可安全寫回的設定模型。
+
+### English version
+
+Use the standalone [HTML architecture diagram](docs/game-tuner-architecture.html) when you need a visual explanation that can be opened directly in a browser.
+
+1. **Start with the entry points:** Users can work through the GUI, CLI, or HTTP API. All three routes call the same `config_manager`, so the product has one source of truth for settings behavior.
+2. **Explain discovery and reading:** Platform scanners find installed games, while PCGamingWiki provides the known configuration paths. The tool then detects files or Registry entries and reads formats such as JSON, XML, INI, and VCFG.
+3. **Emphasize normalization:** Every game stores settings differently. Game-specific parsers convert those formats into one normalized settings model containing common fields such as resolution, VSync, frame limit, and upscaling.
+4. **Explain guarded writes:** When a user changes a setting, a game-specific writer converts the normalized model back to the original format. Before anything is written, the tool checks the game version, configuration fingerprint, verification rules, and user consent. It creates a backup before applying an approved write.
+5. **Close the loop:** The result can be read back for verification, exported as a JSON backup, or packaged as diagnostic data. In one sentence: Game Tuner is a multi-entry, single-core configuration manager with game-specific adapters and controlled writes.
+
+> Game Tuner turns platform-specific, game-specific configuration formats into one model that can be read, compared, and safely written back.
+
+---
+
 ## 系統需求 / Requirements
 
 - **Python:** 3.8 以上 / 3.8 or above
@@ -59,8 +155,8 @@
 1. **複製專案 / Clone the repository**
 
    ```bash
-   git clone https://github.com/ElyZeng/Game-setting-aligner.git
-   cd Game-setting-aligner
+  git clone https://github.com/ElyZeng/Game-Setting-Aligner-Agent.git
+  cd Game-Setting-Aligner-Agent
    ```
 
 2. **安裝依賴 / Install dependencies**
@@ -257,10 +353,10 @@ Type `/game-tuner` or use natural language (e.g., "scan my games") to invoke.
 
 2. **取得專案**（擇一）
 
-   方法 A — 從 GitHub Clone：
+    方法 A — 從 GitHub Clone：
    ```bash
-  git clone https://github.com/ElyZeng/Game-Setting-Aligner-Agent.git
-   cd Game-Tuner-POC
+    git clone https://github.com/ElyZeng/Game-Setting-Aligner-Agent.git
+    cd Game-Setting-Aligner-Agent
    ```
 
    方法 B — 下載 Release 的 `.exe`（免安裝 Python）：
@@ -399,7 +495,7 @@ pause
 ## 專案結構 / Project Structure
 
 ```
-Game-Tuner-POC/
+Game-Setting-Aligner-Agent/
 ├── main.py                     # GUI 入口點 / GUI entry point
 ├── cli.py                      # CLI 入口點 / CLI entry point
 ├── requirements.txt            # 依賴套件清單 / Dependency list

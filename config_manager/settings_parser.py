@@ -344,7 +344,9 @@ def setting_options_for_game(
         if key == UPSCALING:
             return ["—", "TSR", "NXSR", "FSR3", "XeSS"]
         if key == UPSCALING_MODE:
-            if "benchmark" in name or upscaling_method is None:
+            if "benchmark" in name:
+                return ["—", "Ultra Performance (33%)", "Performance (50%)", "Balanced (65%)", "Native AA (100%)"] if upscaling_method in {"TSR", "FSR", "XeSS"} else ["—"]
+            if upscaling_method is None:
                 return ["—"]
             return [
                 "—",
@@ -355,6 +357,8 @@ def setting_options_for_game(
                 return ["—", "Off", "On"] if upscaling_method in {"TSR", "FSR"} else ["—"]
             return ["—", "Off", "Auto"] if upscaling_method == "XeSS" else ["—", "Off"]
         if key == QUICK_PRESET:
+            if "benchmark" in name:
+                return ["—", "Low", "Medium", "High", "Very High", "Cinematic"]
             return ["—", "Custom", "Low", "Medium", "High", "Very High", "Cinematic"]
     if "street fighter" in name or "streetfighter" in name:
         if key == UPSCALING_MODE:
@@ -642,12 +646,13 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
             "3": "High",
             "4": "Very High",
             "5": "Cinematic",
+            **({"6": "Custom"} if benchmark else {}),
         }.get(quality, f"Quality Level {quality}")
         scalability_values = [
             ini_values[key] for key in BLACK_MYTH_SCALABILITY_KEYS
             if key in ini_values
         ]
-        expected_level = str(int(quality) - 1) if quality.isdigit() and quality != "0" else None
+        expected_level = str(int(quality) - 1) if quality in {"1", "2", "3", "4", "5"} else None
         r[QUICK_PRESET] = (
             "Custom"
             if expected_level is not None
@@ -658,7 +663,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
 
     super_resolution = ui_values.get("SuperResolutionSampling")
     if super_resolution is not None:
-        mapping = {"3": "XeSS"} if benchmark else {
+        mapping = {"0": "FSR", "1": "XeSS", "3": "TSR"} if benchmark else {
             "0": "FSR3",
             "1": "XeSS",
             "3": "TSR",
@@ -666,7 +671,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
         }
         r[UPSCALING] = mapping.get(super_resolution, f"Super Resolution (mode {super_resolution})")
         resolution_quality = _parse_positive_int(ini_values.get("sg.ResolutionQuality"))
-        if not benchmark and resolution_quality is not None:
+        if resolution_quality is not None:
             r[UPSCALING_MODE] = _black_myth_upscaling_mode(resolution_quality)
         else:
             r[UPSCALING_MODE] = "N/A"
@@ -680,7 +685,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
         else:
             r[FRAME_GENERATION] = {
                 "0": "Off",
-                "1": "Auto",
+                "1": "On" if benchmark else "Auto",
             }.get(insert_frame, f"Mode {insert_frame}")
 
     r[DYNAMIC_RESOLUTION] = "N/A"

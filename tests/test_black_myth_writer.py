@@ -28,6 +28,220 @@ def test_black_myth_retail_upscaling_and_frame_generation_options():
         ) == ["—", "Off"]
 
 
+def test_black_myth_benchmark_writer_round_trip(tmp_path):
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = """[ScalabilityGroups]
+sg.ResolutionQuality=65
+sg.ViewDistanceQuality=4
+sg.AntiAliasingQuality=4
+sg.ShadowQuality=4
+sg.GlobalIlluminationQuality=4
+sg.RayTracingQuality=0
+sg.ReflectionQuality=4
+sg.PostProcessQuality=4
+sg.TextureQuality=4
+sg.EffectsQuality=4
+sg.FoliageQuality=4
+sg.ShadingQuality=4
+[/Script/GSGameSettings.GSGameUserSettings]
+bUseVSync=True
+FrameRateLimit=120.000000
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedResolutionSizeX=1920
+LastUserConfirmedResolutionSizeY=1080
+FullscreenMode=1
+LastConfirmedFullscreenMode=1
+PreferredFullscreenMode=1
+UISettingData=(("ScreenMode", "1"),("WindowFullImageQuality", "1000000"),("Vsync", "1"),("SuperResolutionSampling", "3"),("InsertFrame", "1"),("QualityLevel", "5"))
+"""
+    settings_path.write_text(content, encoding="utf-8")
+
+    result = write_settings(
+        "Black Myth: Wukong Benchmark Tool",
+        [{"expanded_path": str(settings_path), "found": True, "content": content}],
+        {
+            "resolution": "1600x900",
+            "screen_mode": "Windowed",
+            "vsync": "Off",
+            "frame_limit": "60 FPS",
+            "upscaling": "FSR",
+            "upscaling_mode": "50%",
+            "frame_generation": "Off",
+            "quick_preset": "High",
+        },
+    )
+
+    written = settings_path.read_text(encoding="utf-8")
+    parsed = extract_key_settings(
+        "Black Myth: Wukong Benchmark Tool",
+        [{"expanded_path": str(settings_path), "found": True, "content": written}],
+    )
+    assert result[0]["status"] == "ok"
+    assert parsed == {
+        "resolution": "1600x900",
+        "screen_mode": "Windowed",
+        "vsync": "Off",
+        "frame_limit": "60 FPS",
+        "dynamic_resolution": "N/A",
+        "upscaling": "FSR",
+        "upscaling_mode": "Performance (50%)",
+        "frame_generation": "Off",
+        "quick_preset": "High",
+    }
+    assert "sg.RayTracingQuality=0" in written
+
+
+def test_black_myth_benchmark_borderless_resolution_round_trip(tmp_path):
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = """ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedResolutionSizeX=1920
+LastUserConfirmedResolutionSizeY=1080
+UISettingData=(("ScreenMode", "1"),("WindowFullImageQuality", "1000000"))
+"""
+    settings_path.write_text(content, encoding="utf-8")
+
+    write_settings(
+        "Black Myth: Wukong Benchmark Tool",
+        [{"expanded_path": str(settings_path), "found": True, "content": content}],
+        {"resolution": "1600x900"},
+    )
+
+    written = settings_path.read_text(encoding="utf-8")
+    parsed = extract_key_settings(
+        "Black Myth: Wukong Benchmark Tool",
+        [{"expanded_path": str(settings_path), "found": True, "content": written}],
+    )
+    assert parsed["resolution"] == "1600x900"
+
+
+def test_black_myth_benchmark_xess_keeps_stale_frame_generation(tmp_path):
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = 'UISettingData=(("SuperResolutionSampling", "3"),("InsertFrame", "1"))\n'
+    settings_path.write_text(content, encoding="utf-8")
+
+    write_settings(
+        "Black Myth: Wukong Benchmark Tool",
+        [{"expanded_path": str(settings_path), "found": True, "content": content}],
+        {"upscaling": "XeSS"},
+    )
+
+    written = settings_path.read_text(encoding="utf-8")
+    assert '("SuperResolutionSampling", "1")' in written
+    assert '("InsertFrame", "1")' in written
+
+
+def test_black_myth_benchmark_custom_is_not_a_selectable_preset():
+    assert setting_options_for_game(
+        "Black Myth: Wukong Benchmark Tool", "quick_preset"
+    ) == ["—", "Low", "Medium", "High", "Very High", "Cinematic"]
+
+
+def test_black_myth_benchmark_upscaling_mode_options_and_named_write(tmp_path):
+    options = setting_options_for_game(
+        "Black Myth: Wukong Benchmark Tool", "upscaling_mode", upscaling_method="TSR"
+    )
+    assert options == ["—", "Ultra Performance (33%)", "Performance (50%)", "Balanced (65%)", "Native AA (100%)"]
+    assert setting_options_for_game(
+        "Black Myth: Wukong Benchmark Tool", "upscaling_mode", upscaling_method=None
+    ) == ["—"]
+
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = """[ScalabilityGroups]
+sg.ResolutionQuality=65
+[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+DesiredScreenWidth=1248
+DesiredScreenHeight=702
+LastUserConfirmedDesiredScreenWidth=1248
+LastUserConfirmedDesiredScreenHeight=702
+UISettingData=(("ImageQuality", "702"),("SuperResolutionSampling", "3"))
+"""
+    for option, percentage in (("Ultra Performance (33%)", 33), ("Performance (50%)", 50), ("Native AA (100%)", 100)):
+        settings_path.write_text(content, encoding="utf-8")
+        write_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"expanded_path": str(settings_path), "found": True, "content": content}],
+            {"upscaling_mode": option},
+        )
+        written = settings_path.read_text(encoding="utf-8")
+        assert f"sg.ResolutionQuality={percentage}" in written
+        assert extract_key_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"expanded_path": str(settings_path), "found": True, "content": written}],
+        )["upscaling_mode"] == option
+
+
+def test_black_myth_benchmark_guarded_candidate_write(tmp_path):
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = """[ScalabilityGroups]
+sg.ResolutionQuality=65
+sg.ViewDistanceQuality=4
+sg.AntiAliasingQuality=4
+sg.ShadowQuality=4
+sg.GlobalIlluminationQuality=4
+sg.RayTracingQuality=0
+sg.ReflectionQuality=4
+sg.PostProcessQuality=4
+sg.TextureQuality=4
+sg.EffectsQuality=4
+sg.FoliageQuality=4
+sg.ShadingQuality=4
+[/Script/GSGameSettings.GSGameUserSettings]
+bUseVSync=True
+FrameRateLimit=120.000000
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedResolutionSizeX=1920
+LastUserConfirmedResolutionSizeY=1080
+FullscreenMode=1
+LastConfirmedFullscreenMode=1
+PreferredFullscreenMode=1
+UISettingData=(("ScreenMode", "1"),("WindowFullImageQuality", "1000000"),("Vsync", "1"),("SuperResolutionSampling", "3"),("InsertFrame", "1"),("QualityLevel", "5"))
+"""
+    settings_path.write_text(content, encoding="utf-8")
+    config_files = [{
+        "expanded_path": str(settings_path), "found": True, "content": content,
+    }]
+    supported = [
+        "resolution", "screen_mode", "vsync", "frame_limit",
+        "upscaling", "frame_generation", "quick_preset",
+    ]
+    registry = SimpleNamespace(
+        data_dir=tmp_path / "app-data",
+        test_write_enabled=lambda: True,
+        status_for=lambda *_args: {
+            "status": "write_candidate",
+            "reason": "verified",
+            "rule": {"supported_settings": supported},
+        },
+    )
+
+    result = backup_and_write(
+        "Black Myth: Wukong Benchmark Tool",
+        "Steam",
+        "Steam build 15365379",
+        config_files,
+        {"upscaling": "FSR", "frame_generation": "Off"},
+        write_settings,
+        registry,
+    )
+
+    assert result[0]["status"] == "ok"
+    with pytest.raises(Exception, match="write_setting_not_allowed:upscaling_mode"):
+        backup_and_write(
+            "Black Myth: Wukong Benchmark Tool",
+            "Steam",
+            "Steam build 15365379",
+            config_files,
+            {"upscaling_mode": "50%"},
+            write_settings,
+            registry,
+        )
+
+
 def test_black_myth_vsync_round_trip_only_writes_game_user_settings(tmp_path):
     engine_path = tmp_path / "Engine.ini"
     engine_content = "[SystemSettings]\nr.Foo=1\n"
@@ -91,6 +305,40 @@ UISettingData=(("ScreenMode", "2"),("ImageQuality", "1080"))
     assert parsed["resolution"] == "1920x1080"
     assert "LastUserConfirmedDesiredScreenWidth=1920" in written
     assert "LastUserConfirmedDesiredScreenHeight=1080" in written
+
+
+def test_black_myth_benchmark_resolution_preserves_upscaling_percentage(tmp_path):
+    settings_path = tmp_path / "GameUserSettings.ini"
+    content = """[ScalabilityGroups]
+sg.ResolutionQuality=65
+[/Script/GSGameSettings.GSGameUserSettings]
+ResolutionSizeX=1920
+ResolutionSizeY=1080
+LastUserConfirmedResolutionSizeX=1920
+LastUserConfirmedResolutionSizeY=1080
+DesiredScreenWidth=1248
+DesiredScreenHeight=702
+LastUserConfirmedDesiredScreenWidth=1248
+LastUserConfirmedDesiredScreenHeight=702
+UISettingData=(("ImageQuality", "702"),("SuperResolutionSampling", "3"))
+"""
+    settings_path.write_text(content, encoding="utf-8")
+
+    write_settings(
+        "Black Myth: Wukong Benchmark Tool",
+        [{"expanded_path": str(settings_path), "found": True, "content": content}],
+        {"resolution": "1600x900"},
+    )
+
+    written = settings_path.read_text(encoding="utf-8")
+    assert "ResolutionSizeX=1600" in written
+    assert "ResolutionSizeY=900" in written
+    assert "sg.ResolutionQuality=65" in written
+    assert "DesiredScreenWidth=1248" in written
+    assert "DesiredScreenHeight=702" in written
+    assert "LastUserConfirmedDesiredScreenWidth=1248" in written
+    assert "LastUserConfirmedDesiredScreenHeight=702" in written
+    assert '("ImageQuality", "585")' in written
 
 
 def test_black_myth_screen_mode_round_trip_updates_ui_setting_data(tmp_path):

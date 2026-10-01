@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.17 (2026-09-23)
+
+### Added
+- Black Myth: Wukong Benchmark Tool now has dedicated parser and writer mappings separate from the retail game.
+- Benchmark writes support the verified resolution, screen mode, V-Sync, frame limit, upscaling method, frame generation, and fixed quick-preset values.
+
+### Fixed
+- Benchmark TSR, FSR, and XeSS values now use their observed stored enums, including method-specific Frame Generation availability.
+- Super Sampling Clarity is read as its exact stored percentage, and Custom quality level `6` is parsed correctly.
+
+---
+
 # v0.08.16 (2026-09-23)
 
 ### Fixed

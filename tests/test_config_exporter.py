@@ -1387,8 +1387,8 @@ UISettingData=(("ImageQuality", "853"),("ScreenMode", "1"),("ScreenRatio", "2"),
         assert result["resolution"] == "1600x900"
         assert result["screen_mode"] == "Borderless Windowed"
         assert result["vsync"] == "On"
-        assert result["upscaling"] == "XeSS"
-        assert result["frame_generation"] == "N/A"
+        assert result["upscaling"] == "TSR"
+        assert result["frame_generation"] == "On"
         assert result["quick_preset"] == "Cinematic"
 
     def test_parse_black_myth_benchmark_windowed_uses_confirmed_resolution(self):
@@ -1408,6 +1408,56 @@ UISettingData=(("ScreenMode", "2"),("ScreenResolution", "0"))
         )
 
         assert result["resolution"] == "1280x720"
+
+    def test_parse_black_myth_benchmark_fsr_and_frame_generation(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = 'UISettingData=(("SuperResolutionSampling", "0"),("InsertFrame", "1"))\n'
+
+        result = extract_key_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["upscaling"] == "FSR"
+        assert result["frame_generation"] == "On"
+
+    def test_parse_black_myth_benchmark_xess_disables_frame_generation(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = 'sg.ResolutionQuality=50\nUISettingData=(("SuperResolutionSampling", "1"),("InsertFrame", "1"))\n'
+
+        result = extract_key_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["upscaling"] == "XeSS"
+        assert result["upscaling_mode"] == "Performance (50%)"
+        assert result["frame_generation"] == "N/A"
+
+    def test_parse_black_myth_benchmark_upscaling_mode_uses_retail_labels(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        for percentage, expected in ((50, "Performance (50%)"), (66, "Balanced (66%)"), (65, "Balanced (65%)")):
+            content = f'sg.ResolutionQuality={percentage}\nUISettingData=(("SuperResolutionSampling", "3"))\n'
+            result = extract_key_settings(
+                "Black Myth: Wukong Benchmark Tool",
+                [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+            )
+            assert result["upscaling_mode"] == expected
+
+    def test_parse_black_myth_benchmark_custom_quality_level(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = 'UISettingData=(("QualityLevel", "6"))\n'
+
+        result = extract_key_settings(
+            "Black Myth: Wukong Benchmark Tool",
+            [{"found": True, "content": content, "expanded_path": "GameUserSettings.ini"}],
+        )
+
+        assert result["quick_preset"] == "Custom"
 
     def test_parse_black_myth_benchmark_uses_confirmed_resolution(self):
         from config_manager.settings_parser import extract_key_settings

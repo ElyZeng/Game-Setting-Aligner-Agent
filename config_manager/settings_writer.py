@@ -350,7 +350,7 @@ def _write_unreal_ini(
 
 
 def _write_black_myth_ini(
-    content: str, settings: Dict[str, Optional[str]]
+    content: str, settings: Dict[str, Optional[str]], *, benchmark: bool = False
 ) -> str:
     result = _write_unreal_ini(content, settings)
 
@@ -374,21 +374,27 @@ def _write_black_myth_ini(
         )
 
     upscaling = settings.get(UPSCALING)
-    upscaling_values = {"FSR3": "0", "XeSS": "1", "TSR": "3", "NXSR": "5"}
+    upscaling_values = (
+        {"FSR": "0", "XeSS": "1", "TSR": "3"}
+        if benchmark else
+        {"FSR3": "0", "XeSS": "1", "TSR": "3", "NXSR": "5"}
+    )
     if upscaling in upscaling_values:
         result = _replace_black_myth_ui_value(
             result, "SuperResolutionSampling", upscaling_values[upscaling]
         )
-        if upscaling != "XeSS":
+        if not benchmark and upscaling != "XeSS":
             result = _replace_black_myth_ui_value(result, "InsertFrame", "0")
 
     upscaling_mode = settings.get(UPSCALING_MODE)
     render_percentage: Optional[int] = None
+    update_desired_dimensions = True
     if upscaling_mode is not None:
-        percentage_match = re.search(r"\((\d{1,3})%\)\s*$", upscaling_mode)
+        percentage_pattern = r"(?:^|\()(\d{1,3})%\)?\s*$" if benchmark else r"\((\d{1,3})%\)\s*$"
+        percentage_match = re.search(percentage_pattern, upscaling_mode)
         if percentage_match:
             render_percentage = int(percentage_match.group(1))
-            if 1 <= render_percentage <= 100:
+            if (33 if benchmark else 1) <= render_percentage <= 100:
                 result = _replace_ini_value(
                     result, "sg.ResolutionQuality", str(render_percentage)
                 )
@@ -398,6 +404,7 @@ def _write_black_myth_ini(
         current_percentage = _parse_ini_kv(result).get("sg.ResolutionQuality", "100")
         if current_percentage and current_percentage.isdigit():
             render_percentage = int(current_percentage)
+            update_desired_dimensions = not benchmark
 
     if render_percentage is not None:
         ini_values = _parse_ini_kv(result)
@@ -407,10 +414,11 @@ def _write_black_myth_ini(
             render_width = int(int(width) * render_percentage / 100)
             render_height = int(int(height) * render_percentage / 100)
             image_quality = round(int(height) * render_percentage / 100)
-            for key in ("DesiredScreenWidth", "LastUserConfirmedDesiredScreenWidth"):
-                result = _replace_ini_value(result, key, str(render_width))
-            for key in ("DesiredScreenHeight", "LastUserConfirmedDesiredScreenHeight"):
-                result = _replace_ini_value(result, key, str(render_height))
+            if update_desired_dimensions:
+                for key in ("DesiredScreenWidth", "LastUserConfirmedDesiredScreenWidth"):
+                    result = _replace_ini_value(result, key, str(render_width))
+                for key in ("DesiredScreenHeight", "LastUserConfirmedDesiredScreenHeight"):
+                    result = _replace_ini_value(result, key, str(render_height))
             result = _replace_black_myth_ui_value(
                 result, "ImageQuality", str(image_quality)
             )
@@ -423,7 +431,8 @@ def _write_black_myth_ini(
     if frame_generation in frame_generation_values:
         stored_frame_generation = (
             frame_generation_values[frame_generation]
-            if current_upscaling == "1"
+            if (benchmark and current_upscaling in {"0", "3"})
+            or (not benchmark and current_upscaling == "1")
             else "0"
         )
         result = _replace_black_myth_ui_value(
@@ -432,7 +441,7 @@ def _write_black_myth_ini(
 
     quick_preset = settings.get(QUICK_PRESET)
     quick_preset_values = {
-        "Custom": "0",
+        "Custom": "6" if benchmark else "0",
         "Low": "1",
         "Medium": "2",
         "High": "3",
@@ -773,8 +782,8 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
         return "unknown"
     if "cyberpunk" in name_lower:
         return "cyberpunk"
-    if ("black myth" in name_lower or "wukong" in name_lower) and "benchmark" not in name_lower:
-        return "black_myth"
+    if "black myth" in name_lower or "wukong" in name_lower:
+        return "black_myth_benchmark" if "benchmark" in name_lower else "black_myth"
     if "counter-strike" in name_lower or "cs2" in name_lower:
         return "cs2"
     if "forza" in name_lower:
@@ -859,12 +868,15 @@ def write_settings(
         else:
             results.append({"path": "", "status": "skipped", "detail": "No UserSettings.json found"})
 
-    elif parser_type == "black_myth":
+    elif parser_type in {"black_myth", "black_myth_benchmark"}:
         for cfg in readable:
             path = cfg["expanded_path"]
             if Path(path).name.casefold() == "gameusersettings.ini":
                 try:
-                    new_content = _write_black_myth_ini(cfg["content"], to_write)
+                    new_content = _write_black_myth_ini(
+                        cfg["content"], to_write,
+                        benchmark=parser_type == "black_myth_benchmark",
+                    )
                     _safe_write(path, new_content)
                     results.append({"path": path, "status": "ok", "detail": "Black Myth settings written"})
                 except Exception as e:
