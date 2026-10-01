@@ -130,6 +130,28 @@ class TestConfigWriterXML:
 # ---------------------------------------------------------------------------
 
 class TestConfigPackage:
+    @pytest.mark.parametrize("newlines", [b"\n", b"\r\n", b"\r\n\n"])
+    def test_import_v2_restores_gta_bytes_exactly(self, tmp_path, newlines):
+        from config_manager.config_exporter import _try_read_file
+
+        config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+        config_path.parent.mkdir()
+        first_line = b"\r\n" if newlines == b"\r\n\n" else newlines
+        last_line = b"\n" if newlines == b"\r\n\n" else newlines
+        original = b"<Settings>" + first_line + b'<video><VSync value="1"/></video>' + last_line + b"</Settings>" + last_line
+        config_path.write_bytes(original)
+        package_path = tmp_path / "gta.json"
+        package_path.write_text(json.dumps({
+            "version": 2,
+            "games": {"Grand Theft Auto V Enhanced": {"config_files": [_try_read_file(str(config_path))]}},
+        }), encoding="utf-8")
+        config_path.write_bytes(b"changed")
+
+        restored = ConfigPackage().import_package(str(package_path))
+
+        assert restored["Grand Theft Auto V Enhanced"] == [str(config_path)]
+        assert config_path.read_bytes() == original
+
     def test_import_v2_restores_forza_fullscreen_sidecar(self, tmp_path):
         config_path = tmp_path / "ForzaHorizon6" / "LocalStorage_Shared" / "ForzaUserConfigSelections" / "UserConfigSelections"
         config_path.parent.mkdir(parents=True)

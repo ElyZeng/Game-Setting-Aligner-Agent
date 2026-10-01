@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.17 (2026-10-01)
+
+### Added
+- Grand Theft Auto V Enhanced Steam build 1.0.1158.16 can read sampled graphics settings and preflight V-Sync and frame-limit writes under an exact structural fingerprint.
+- A `write_candidate` rule limits test writes to individually sampled V-Sync and frame-limit values; it does not mark the game as write-verified.
+
+### Safety
+- GTA writes require an exact published rule, a per-value allowlist, and explicit test-write consent. A separate guarded baseline command checks byte-exact no-change restoration.
+- Real-file Apply and in-game persistence have not yet been validated; other GTA settings remain read-only.
+
+---
+
 # v0.08.16 (2026-09-23)
 
 ### Fixed

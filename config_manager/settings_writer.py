@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -627,6 +628,59 @@ def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
     return result
 
 
+# ── Grand Theft Auto V Enhanced XML Writer ──────────────────────────
+
+GTA_ENHANCED_WRITE_CODES = {
+    VSYNC: {"Off": "0", "On": "1"},
+    FRAME_LIMIT: {"Unlimited": "0", **{f"{fps} FPS": str(fps) for fps in (30, 40, 45, 60, 72, 75, 90, 105, 120)}},
+}
+
+
+def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
+    if not settings or set(settings) - set(GTA_ENHANCED_WRITE_CODES) or any(
+        value not in GTA_ENHANCED_WRITE_CODES[key] for key, value in settings.items()
+    ):
+        raise ValueError("Unsupported GTA V Enhanced write settings")
+
+    root = ET.fromstring(content)
+    if root.tag != "Settings":
+        raise ValueError("Unexpected GTA V Enhanced XML root")
+
+    for key, tag in ((VSYNC, "VSync"), (FRAME_LIMIT, "FrameLimit")):
+        if key not in settings:
+            continue
+        node = root.find(f"./video/{tag}")
+        if node is None or len(root.findall(f".//{tag}")) != 1:
+            raise ValueError(f"Missing or ambiguous GTA V Enhanced {tag} node")
+        if node.get("value") not in GTA_ENHANCED_WRITE_CODES[key].values():
+            raise ValueError(f"Unsupported GTA V Enhanced {tag} value")
+        matches = list(re.finditer(rf'(<{tag}\b[^>]*\bvalue=")([^"]*)(")', content))
+        if len(matches) != 1 or matches[0].group(2) != node.get("value"):
+            raise ValueError(f"Unpatchable GTA V Enhanced {tag} node")
+        match = matches[0]
+        content = content[:match.start(2)] + GTA_ENHANCED_WRITE_CODES[key][settings[key]] + content[match.end(2):]
+    return content
+
+
+def _write_gta_enhanced_settings(
+    config_files: List[Dict[str, Any]], settings: Dict[str, str]
+) -> List[Dict[str, str]]:
+    config_file = config_files[0]
+    path = Path(config_file["expanded_path"])
+    try:
+        original = path.read_bytes()
+        content = original.decode("utf-8")
+        if content != config_file["content"]:
+            raise ValueError("GTA V Enhanced config changed since validation")
+        patched = _write_gta_enhanced_xml(content, settings)
+        if patched == content:
+            raise ValueError("GTA V Enhanced write would not change config")
+        path.write_bytes(patched.encode("utf-8"))
+        return [{"path": str(path), "status": "ok", "detail": "GTA V Enhanced settings written"}]
+    except (OSError, UnicodeError, ValueError, ET.ParseError) as exc:
+        return [{"path": str(path), "status": "error", "detail": str(exc)}]
+
+
 # ── Registry JSON Writer ────────────────────────────────────────────
 
 def _write_registry_json(
@@ -765,12 +819,12 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
     """Detect which parser type a game uses, returning a type string.
 
     Returns one of: ``"cyberpunk"``, ``"black_myth"``, ``"unreal_ini"``,
-    ``"forza_xml"``, ``"registry_json"``, ``"cs2"``, ``"unknown"``.
+    ``"forza_xml"``, ``"gta_enhanced_xml"``, ``"registry_json"``, ``"cs2"``, ``"unknown"``.
     """
     name_lower = game_name.lower()
 
     if "grand theft auto v enhanced" in name_lower:
-        return "unknown"
+        return "gta_enhanced_xml"
     if "cyberpunk" in name_lower:
         return "cyberpunk"
     if ("black myth" in name_lower or "wukong" in name_lower) and "benchmark" not in name_lower:
@@ -858,6 +912,9 @@ def write_settings(
                 break
         else:
             results.append({"path": "", "status": "skipped", "detail": "No UserSettings.json found"})
+
+    elif parser_type == "gta_enhanced_xml":
+        results.append({"path": "", "status": "skipped", "detail": "GTA V Enhanced requires guarded Apply"})
 
     elif parser_type == "black_myth":
         for cfg in readable:

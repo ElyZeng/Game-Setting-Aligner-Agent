@@ -186,7 +186,11 @@ def _try_read_file(path: str) -> Dict[str, Any]:
             entry["error"] = "binary_file"
             return entry
         size = os.path.getsize(path)
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        gta_settings = (
+            os.path.basename(path).casefold() == "settings.xml"
+            and os.path.basename(os.path.dirname(path)).casefold() == "gtav enhanced"
+        )
+        with open(path, "r", encoding="utf-8", errors="replace", newline="" if gta_settings else None) as fh:
             if size > _MAX_FILE_BYTES:
                 entry["content"] = fh.read(_MAX_FILE_BYTES)
                 entry["truncated"] = True

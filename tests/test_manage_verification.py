@@ -4,7 +4,10 @@ import hashlib
 import json
 import zipfile
 
+import pytest
+
 from tools.manage_verification import build_offline_bundle, build_release
+from config_manager.verification import VerificationError
 
 
 def test_build_release_writes_matching_checksum(tmp_path):
@@ -41,6 +44,96 @@ def test_build_offline_bundle_contains_only_manifest_and_checksum(tmp_path):
     assert checksum == hashlib.sha256(
         json.dumps(manifest, indent=2, ensure_ascii=False).encode("utf-8")
     ).hexdigest()
+
+
+def test_gta_reviewed_bundle_keeps_per_value_write_allowlist(tmp_path):
+    rules = tmp_path / "rules.json"
+    rules.write_text(json.dumps([{
+        "game": "Grand Theft Auto V Enhanced", "platform": "Steam",
+        "version": "1.0.1158.16", "fingerprint": "a" * 64,
+        "status": "write_candidate", "config_patterns": ["settings.xml"],
+        "supported_settings": ["vsync", "frame_limit"],
+        "supported_values": {"vsync": ["Off", "On"], "frame_limit": ["Unlimited", "60 FPS"]},
+        "reader_id": "gta-enhanced-xml-reader", "writer_id": "gta-enhanced-xml-writer",
+        "review_notes": "private review data",
+    }]), encoding="utf-8")
+    output = tmp_path / "rules.gtrules"
+
+    build_offline_bundle(rules, output, "1.0.0", "0.05.1")
+
+    with zipfile.ZipFile(output) as archive:
+        rule = json.loads(archive.read("verified-games.json"))["games"][0]
+    assert rule["supported_values"] == {
+        "vsync": ["Off", "On"], "frame_limit": ["Unlimited", "60 FPS"],
+    }
+    assert "review_notes" not in rule
+
+
+def test_gta_release_build_preserves_checksum_verified_base_rules(tmp_path):
+    existing = {
+        "game": "Existing", "platform": "Steam", "version": "1.0", "fingerprint": "known",
+        "status": "write_candidate", "supported_settings": ["vsync"],
+        "config_patterns": ["settings.ini"], "reader_id": "existing-reader", "writer_id": "existing-writer",
+    }
+    base_path = tmp_path / "verified-games.json"
+    base_raw = json.dumps({
+        "format_version": 1, "manifest_version": "1.2.20",
+        "minimum_client_version": "0.08.17", "games": [existing],
+    }).encode("utf-8")
+    base_path.write_bytes(base_raw)
+    base_path.with_name(base_path.name + ".sha256").write_text(
+        hashlib.sha256(base_raw).hexdigest() + "  verified-games.json\n", encoding="ascii",
+    )
+    rules = tmp_path / "rules.json"
+    rules.write_text(json.dumps([{
+        "game": "Grand Theft Auto V Enhanced", "platform": "Steam",
+        "version": "1.0.1158.16", "fingerprint": "a" * 64,
+        "status": "write_candidate", "config_patterns": ["settings.xml"],
+        "supported_settings": ["vsync"], "supported_values": {"vsync": ["Off", "On"]},
+        "reader_id": "gta-enhanced-xml-reader", "writer_id": "gta-enhanced-xml-writer",
+    }]), encoding="utf-8")
+    bundle = tmp_path / "rules.gtrules"
+
+    build_offline_bundle(rules, bundle, "1.2.21", "0.08.17", base_manifest=base_path)
+
+    with zipfile.ZipFile(bundle) as archive:
+        manifest = json.loads(archive.read("verified-games.json"))
+    assert manifest["manifest_version"] == "1.2.21"
+    assert manifest["games"][0] == existing
+    assert manifest["games"][1]["supported_values"] == {"vsync": ["Off", "On"]}
+
+    base_path.with_name(base_path.name + ".sha256").write_text("0" * 64, encoding="ascii")
+    with pytest.raises(ValueError, match="base_manifest_checksum_mismatch"):
+        build_offline_bundle(rules, tmp_path / "bad.gtrules", "1.2.21", "0.08.17", base_manifest=base_path)
+    assert not (tmp_path / "bad.gtrules").exists()
+
+    base_path.with_name(base_path.name + ".sha256").write_text(
+        hashlib.sha256(base_raw).hexdigest(), encoding="ascii",
+    )
+    rules.write_text(json.dumps([existing]), encoding="utf-8")
+    with pytest.raises(ValueError, match="reviewed_rule_conflicts_with_base"):
+        build_offline_bundle(rules, tmp_path / "conflict.gtrules", "1.2.21", "0.08.17", base_manifest=base_path)
+    assert not (tmp_path / "conflict.gtrules").exists()
+
+
+@pytest.mark.parametrize("values", [None, {"vsync": ["Maybe"]}, {"vsync": ["On"], "frame_limit": ["144 FPS"]}])
+def test_gta_rule_builder_rejects_missing_or_unobserved_values(tmp_path, values):
+    rules = tmp_path / "rules.json"
+    rule = {
+        "game": "Grand Theft Auto V Enhanced", "platform": "Steam",
+        "version": "1.0.1158.16", "fingerprint": "a" * 64,
+        "status": "write_candidate", "config_patterns": ["settings.xml"],
+        "supported_settings": ["vsync"], "reader_id": "gta-enhanced-xml-reader",
+        "writer_id": "gta-enhanced-xml-writer",
+    }
+    if values is not None:
+        rule["supported_values"] = values
+    rules.write_text(json.dumps([rule]), encoding="utf-8")
+    output = tmp_path / "rules.gtrules"
+
+    with pytest.raises(VerificationError, match="invalid_gta_write_rule"):
+        build_offline_bundle(rules, output, "1.0.0", "0.05.1")
+    assert not output.exists()
 
 
 def test_build_offline_bundle_excludes_private_review_data(tmp_path):

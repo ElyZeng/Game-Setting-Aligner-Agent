@@ -216,6 +216,42 @@ class TestGtaEnhancedParser:
         assert result[0]["status"] == "skipped"
         assert config_path.read_text(encoding="utf-8") == content
 
+    def test_gta_offline_vsync_patch_preserves_other_xml(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = '<Settings><video><VSync value="1"/><FrameLimit value="120"/></video></Settings>'
+
+        result = _write_gta_enhanced_xml(content, {"vsync": "Off"})
+
+        assert result == content.replace('<VSync value="1"/>', '<VSync value="0"/>')
+
+    def test_gta_offline_vsync_patch_rejects_unpatchable_xml(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = "<Settings><video><VSync value='1'/></video></Settings>"
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(content, {"vsync": "Off"})
+
+    @pytest.mark.parametrize("fps", ["Unlimited", "30 FPS", "40 FPS", "45 FPS", "60 FPS", "72 FPS", "75 FPS", "90 FPS", "105 FPS", "120 FPS"])
+    def test_gta_offline_frame_limit_patch_uses_only_observed_codes(self, fps):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = '<Settings><video><VSync value="1"/><FrameLimit value="0"/></video></Settings>'
+        code = "0" if fps == "Unlimited" else fps.removesuffix(" FPS")
+
+        result = _write_gta_enhanced_xml(content, {"frame_limit": fps})
+
+        assert result == content.replace('<FrameLimit value="0"/>', f'<FrameLimit value="{code}"/>')
+
+    def test_gta_offline_patch_rejects_unknown_frame_limit(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = '<Settings><video><FrameLimit value="0"/></video></Settings>'
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(content, {"frame_limit": "144 FPS"})
+
     def test_reads_video_values_and_saved_scaling_off(self):
         from config_manager.settings_parser import extract_key_settings
 
@@ -422,6 +458,94 @@ class TestGtaEnhancedParser:
         assert result["screen_mode"] == "Borderless Fullscreen"
         assert result["vsync"] == "On"
         assert result["quick_preset"] == "High"
+
+    def test_reads_saved_30_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="30"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "30 FPS"
+
+    def test_reads_saved_40_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="40"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "40 FPS"
+
+    def test_reads_saved_45_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="45"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "45 FPS"
+
+    def test_reads_saved_72_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="72"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "72 FPS"
+
+    def test_reads_saved_75_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="75"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "75 FPS"
+
+    def test_reads_saved_90_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="90"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "90 FPS"
+
+    def test_reads_saved_105_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="105"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "105 FPS"
+
+    def test_reads_saved_120_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="120"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "120 FPS"
 
     def test_reads_saved_fsr3_quality_without_stale_frame_generation(self):
         from config_manager.settings_parser import extract_key_settings
