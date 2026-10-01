@@ -378,6 +378,21 @@ def test_structural_fingerprint_ignores_setting_values():
     assert one == two
 
 
+def test_gta_fingerprint_tracks_xml_structure_without_saved_values():
+    def fingerprint(content):
+        return game_structural_fingerprint(
+            "Grand Theft Auto V Enhanced",
+            [{"expanded_path": "settings.xml", "content": content}],
+        )
+
+    baseline = fingerprint('<Settings><video><VSync value="1"/></video></Settings>')
+
+    assert baseline == fingerprint('<Settings><video><VSync value="0"/></video></Settings>')
+    assert baseline != fingerprint('<Settings><video><FrameLimit value="1"/></video></Settings>')
+    assert baseline != fingerprint('<Settings><graphics><VSync value="1"/></graphics></Settings>')
+    assert baseline != fingerprint('<Settings><video><VSync value="1" mode="auto"/></video></Settings>')
+
+
 def test_black_myth_fingerprint_ignores_unrelated_engine_keys():
     game_settings = {
         "expanded_path": "GameUserSettings.ini",

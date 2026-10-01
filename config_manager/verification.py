@@ -10,6 +10,7 @@ import re
 import shutil
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -110,6 +111,27 @@ def game_structural_fingerprint(
     game: str, config_files: Iterable[Dict[str, Any]]
 ) -> str:
     files = list(config_files)
+    if "grand theft auto v enhanced" in game.casefold():
+        signatures: List[str] = []
+        for config_file in files:
+            content = config_file.get("content")
+            filename = Path(str(config_file.get("expanded_path", ""))).name.casefold()
+            if filename != "settings.xml" or not isinstance(content, str):
+                continue
+            try:
+                root = ET.fromstring(content)
+            except (ET.ParseError, ValueError):
+                signatures.append(f"{filename}:invalid:{content_hash(content)}")
+                continue
+            stack = [(root, "")]
+            while stack:
+                element, parent = stack.pop()
+                path = f"{parent}/{element.tag}"
+                signatures.append(f"{filename}:{path}:{','.join(sorted(element.attrib))}")
+                stack.extend((child, path) for child in element)
+        return hashlib.sha256(
+            (structural_fingerprint(files) + "\n" + "\n".join(sorted(signatures))).encode("utf-8")
+        ).hexdigest()
     if "black myth" in game.casefold() or "wukong" in game.casefold():
         files = [
             config_file for config_file in files

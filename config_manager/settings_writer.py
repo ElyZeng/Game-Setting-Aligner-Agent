@@ -769,6 +769,8 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
     """
     name_lower = game_name.lower()
 
+    if "grand theft auto v enhanced" in name_lower:
+        return "unknown"
     if "cyberpunk" in name_lower:
         return "cyberpunk"
     if ("black myth" in name_lower or "wukong" in name_lower) and "benchmark" not in name_lower:
