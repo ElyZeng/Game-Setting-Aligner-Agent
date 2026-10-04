@@ -453,6 +453,38 @@ def _write_black_myth_ini(
 
 
 
+FORZA_PRESET_V52_ORDER = ("Very Low", "Low", "Medium", "High", "Ultra", "Extreme")
+FORZA_PRESET_V52_FIELDS = {
+    ("CollidableShadows", "value"): ("0", "0", "1", "1", "1", "1"),
+    ("CarSpecularCubemapResolution", "dynamicValue"): ("Low", "Low", "Medium", "High", "High", "High"),
+    ("GlobalSpecularCubemapResolution", "value"): ("128", "128", "256", "512", "512", "512"),
+    ("CubemapDrawDistanceScalar", "value"): ("1.000000", "1.000000", "1.000000", "3.000000", "3.000000", "3.000000"),
+    ("CubemapMeshSizeThresholdScalar", "value"): ("1.000000", "1.000000", "1.000000", "0.143000", "0.143000", "0.143000"),
+    ("EnvMapFrequencyScale", "dynamicValue"): ("Off", "Low", "Medium", "High", "High", "Ultra"),
+    ("CarReflectionLOD", "dynamicValue"): ("VeryLow", "Low", "Medium", "High", "High", "Ultra"),
+    ("CollidablesInMirror", "value"): ("0", "0", "0", "0", "0", "1"),
+    ("MaxCarsInMirror", "value"): ("3", "3", "7", "7", "7", "16"),
+    ("LOD3CarsInMirror", "value"): ("0", "0", "0", "1", "1", "1"),
+    ("HalfRateMirror", "value"): ("1", "1", "0", "0", "0", "0"),
+    ("ParticlesInMirror", "value"): ("0", "0", "0", "0", "0", "1"),
+    ("CarFocusLODMinMax", "dynamicValue"): ("VeryLow", "VeryLow", "Low", "High", "Ultra", "Ultra"),
+    ("CarNonFocusLODMinMax", "min"): ("3", "3", "2", "1", "1", "1"),
+    ("EnableWindshieldReflections", "value"): ("0", "0", "1", "1", "1", "1"),
+    ("WindshieldReflectionResolution", "value"): ("1", "1", "256", "512", "512", "512"),
+    ("MirrorResolution", "value"): ("160", "160", "160", "320", "320", "320"),
+    ("MirrorFarDistance", "value"): ("500", "500", "500", "2000", "2000", "2000"),
+    ("UIHUDGlassCaptureEnabled", "value"): ("0", "1", "1", "1", "1", "1"),
+    ("ScreenAreaTestsMain", "MainScene"): ("70.000000", "120.000000", "180.000000", "200.000000", "200.000000", "200.000000"),
+    ("ScreenAreaTestsMain", "Depth"): ("10.000000", "25.000000", "50.000000", "60.000000", "60.000000", "60.000000"),
+    ("ScreenAreaTestsMain", "Cinematic"): ("50.000000", "80.000000", "100.000000", "130.000000", "130.000000", "130.000000"),
+    ("ScreenAreaTestsShadow", "value"): ("0.000000", "40.000000", "100.000000", "100.000000", "100.000000", "100.000000"),
+    ("ScreenAreaTestsCubemap", "value"): ("0.000000", "25.000000", "70.000000", "70.000000", "70.000000", "100.000000"),
+    ("ScreenAreaTestsMirror", "value"): ("3.000000", "3.000000", "5.000000", "5.000000", "5.000000", "5.000000"),
+    ("FWDPlusQuality", "dynamicValue"): ("VeryLow", "Low", "Low", "High", "High", "High"),
+    ("UseLowQualityAIDrivers", "value"): ("1", "1", "0", "0", "0", "0"),
+}
+
+
 def _write_forza_xml(
     content: str, settings: Dict[str, Optional[str]]
 ) -> str:
@@ -469,9 +501,15 @@ def _write_forza_xml(
     # Overall preset writes the captured base-game quality signature. RT variants
     # remain read-only because their ray-tracing level is a separate dimension.
     preset = settings.get(QUICK_PRESET)
+    if preset is not None and preset not in FORZA_PRESET_SIGNATURES:
+        raise ValueError("Unsupported Forza preset")
     if preset in FORZA_PRESET_SIGNATURES:
         for option_id, option_value in FORZA_PRESET_SIGNATURES[preset].items():
             result = _replace_xml_option(result, option_id, option_value)
+        if re.search(r'<UserConfig\b[^>]*\bVersion="52"', content):
+            index = FORZA_PRESET_V52_ORDER.index(preset)
+            for (tag, attr), values in FORZA_PRESET_V52_FIELDS.items():
+                result = _replace_xml_attr(result, tag, attr, values[index])
 
     # Screen Mode
     val = settings.get(SCREEN_MODE)

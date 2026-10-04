@@ -167,6 +167,8 @@ python tools/manage_verification.py build-bundle reviewed-rules.json --output ve
 
 若只新增單一遊戲規則，請先取得並核對**當下已發布**的 `verified-games.json` 與同目錄的 `verified-games.json.sha256`，再對 `build-release` 或 `build-bundle` 加上 `--base-manifest <verified-games.json>`；建置器會保留基底規則並拒絕校驗錯誤或重複規則。不要用 GTA-only 規則陣列取代原有驗證名單，也不要將本機舊版預覽當成目前遠端版本。
 
+若要更新既有遊戲的同一平台、版本與指紋規則，額外加入 `--replace-base-rule`；審核檔案必須恰好包含一筆與已校驗基底相符的規則，其他遊戲的規則保持不變。Forza Horizon 6 預設寫入規則須指定 `--minimum-client-version 0.08.18`，並在用戶端版本發佈後才上傳。
+
 將 `release-assets/verified-games.json` 及 `release-assets/verified-games.json.sha256` 以同一個 Release 上傳至 `ElyZeng/Game-Setting-Aligner-Agent`。
 
 乾淨 Windows 環境的完整測試流程請見 [docs/clean-environment-test.md](docs/clean-environment-test.md)。

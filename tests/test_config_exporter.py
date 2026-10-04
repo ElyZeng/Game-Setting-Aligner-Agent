@@ -1174,6 +1174,45 @@ class TestForzaWriter:
         assert '<option id="GeometryQuality" value="3" />' in result
         assert '<option id="ShadowQuality" value="2" />' in result
 
+    @pytest.mark.parametrize(
+        ("preset", "car_lod", "focus_lod", "reflection_lod", "mirror_resolution", "main_scene", "low_quality_ai"),
+        [
+            ("Very Low", "0", "VeryLow", "VeryLow", "160", "70.000000", "1"),
+            ("Low", "0", "VeryLow", "Low", "160", "120.000000", "1"),
+            ("Medium", "1", "Low", "Medium", "160", "180.000000", "0"),
+            ("High", "2", "High", "High", "320", "200.000000", "0"),
+            ("Ultra", "3", "Ultra", "High", "320", "200.000000", "0"),
+            ("Extreme", "4", "Ultra", "Ultra", "320", "200.000000", "0"),
+        ],
+    )
+    def test_forza_version52_preset_updates_coupled_graphics(
+        self, preset, car_lod, focus_lod, reflection_lod, mirror_resolution, main_scene, low_quality_ai
+    ):
+        import xml.etree.ElementTree as ET
+        from config_manager.settings_writer import _write_forza_xml
+
+        content = (
+            '<UserConfig Version="52"><selections><option id="CarLOD" value="2" />'
+            '</selections><graphics><CarFocusLODMinMax dynamicValue="High" />'
+            '<CarReflectionLOD dynamicValue="High" /><MirrorResolution value="320" />'
+            '<ScreenAreaTestsMain MainScene="200.000000" />'
+            '<UseLowQualityAIDrivers value="0" /></graphics></UserConfig>'
+        )
+        root = ET.fromstring(_write_forza_xml(content, {"quick_preset": preset}))
+
+        assert root.find('./selections/option').get('value') == car_lod
+        assert root.find('.//CarFocusLODMinMax').get('dynamicValue') == focus_lod
+        assert root.find('.//CarReflectionLOD').get('dynamicValue') == reflection_lod
+        assert root.find('.//MirrorResolution').get('value') == mirror_resolution
+        assert root.find('.//ScreenAreaTestsMain').get('MainScene') == main_scene
+        assert root.find('.//UseLowQualityAIDrivers').get('value') == low_quality_ai
+
+    def test_forza_rejects_unknown_preset(self):
+        from config_manager.settings_writer import _write_forza_xml
+
+        with pytest.raises(ValueError, match="Unsupported Forza preset"):
+            _write_forza_xml('<UserConfig Version="52" />', {"quick_preset": "Custom"})
+
     def test_forza_reads_xess_quality_names(self):
         from config_manager.settings_parser import extract_key_settings
 

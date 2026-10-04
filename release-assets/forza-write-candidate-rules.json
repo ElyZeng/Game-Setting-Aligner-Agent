@@ -25,8 +25,12 @@
       "vsync",
       "frame_limit",
       "upscaling",
-      "upscaling_mode"
+      "upscaling_mode",
+      "quick_preset"
     ],
+    "supported_values": {
+      "quick_preset": ["Very Low", "Low", "Medium", "High", "Ultra", "Extreme"]
+    },
     "reader_id": "existing-parser",
     "writer_id": "forza-xml-writer"
   },

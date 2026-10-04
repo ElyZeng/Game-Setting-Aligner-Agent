@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from config_manager.verification import MANIFEST_FORMAT_VERSION, validate_manifest
+from config_manager.verification import MANIFEST_FORMAT_VERSION, validate_manifest, version_at_least
 
 
 PUBLIC_RULE_FIELDS = (
@@ -38,8 +38,9 @@ def create_candidate(report_path: Path, output_path: Path) -> None:
 def build_release(
     source_path: Path, output_dir: Path, version: str, client_version: str,
     base_manifest: Path | None = None,
+    replace_base_rule: bool = False,
 ) -> None:
-    manifest, raw = _build_manifest(source_path, version, client_version, base_manifest)
+    manifest, raw = _build_manifest(source_path, version, client_version, base_manifest, replace_base_rule)
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "verified-games.json"
     json_path.write_bytes(raw)
@@ -51,6 +52,7 @@ def build_release(
 def _build_manifest(
     source_path: Path, version: str, client_version: str,
     base_manifest: Path | None = None,
+    replace_base_rule: bool = False,
 ):
     rules = json.loads(source_path.read_text(encoding="utf-8"))
     if not isinstance(rules, list):
@@ -60,6 +62,8 @@ def _build_manifest(
         for rule in rules
         if isinstance(rule, dict)
     ]
+    if replace_base_rule and base_manifest is None:
+        raise ValueError("replacement_requires_base_manifest")
     if base_manifest is not None:
         base_raw = base_manifest.read_bytes()
         checksum_path = base_manifest.with_name(base_manifest.name + ".sha256")
@@ -71,9 +75,24 @@ def _build_manifest(
         base_rules = base["games"]
         def rule_key(rule):
             return (rule["game"].casefold(), rule["platform"].casefold(), rule.get("version"), rule.get("fingerprint"))
-        if len({rule_key(rule) for rule in base_rules + public_rules}) != len(base_rules) + len(public_rules):
-            raise ValueError("reviewed_rule_conflicts_with_base")
-        public_rules = base_rules + public_rules
+        if replace_base_rule:
+            if len(public_rules) != 1 or sum(rule_key(rule) == rule_key(public_rules[0]) for rule in base_rules) != 1:
+                raise ValueError("replacement_requires_one_exact_base_rule")
+            public_rules = [
+                public_rules[0] if rule_key(rule) == rule_key(public_rules[0]) else rule
+                for rule in base_rules
+            ]
+        else:
+            if len({rule_key(rule) for rule in base_rules + public_rules}) != len(base_rules) + len(public_rules):
+                raise ValueError("reviewed_rule_conflicts_with_base")
+            public_rules = base_rules + public_rules
+    if not version_at_least(client_version, "0.08.18") and any(
+        rule.get("game") == "Forza Horizon 6"
+        and isinstance(rule.get("supported_settings"), list)
+        and "quick_preset" in rule["supported_settings"]
+        for rule in public_rules
+    ):
+        raise ValueError("forza_preset_client_update_required")
     manifest = {
         "format_version": MANIFEST_FORMAT_VERSION,
         "manifest_version": version,
@@ -90,9 +109,10 @@ def _build_manifest(
 def build_offline_bundle(
     source_path: Path, output_path: Path, version: str, client_version: str,
     base_manifest: Path | None = None,
+    replace_base_rule: bool = False,
 ) -> None:
     """Create a portable integrity-checked bundle from reviewed public rules."""
-    _, raw = _build_manifest(source_path, version, client_version, base_manifest)
+    _, raw = _build_manifest(source_path, version, client_version, base_manifest, replace_base_rule)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     checksum = hashlib.sha256(raw).hexdigest() + "  verified-games.json\n"
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -112,19 +132,21 @@ def main() -> None:
     release.add_argument("--version", required=True)
     release.add_argument("--minimum-client-version", required=True)
     release.add_argument("--base-manifest", type=Path, help="Checksum-verified published manifest to preserve")
+    release.add_argument("--replace-base-rule", action="store_true", help="Replace one exact base rule instead of appending")
     bundle = commands.add_parser("build-bundle")
     bundle.add_argument("rules", type=Path, help="Human-reviewed public verification rules")
     bundle.add_argument("--output", type=Path, required=True)
     bundle.add_argument("--version", required=True)
     bundle.add_argument("--minimum-client-version", required=True)
     bundle.add_argument("--base-manifest", type=Path, help="Checksum-verified published manifest to preserve")
+    bundle.add_argument("--replace-base-rule", action="store_true", help="Replace one exact base rule instead of appending")
     args = parser.parse_args()
     if args.command == "candidate":
         create_candidate(args.report, args.output)
     elif args.command == "build-release":
-        build_release(args.rules, args.output_dir, args.version, args.minimum_client_version, args.base_manifest)
+        build_release(args.rules, args.output_dir, args.version, args.minimum_client_version, args.base_manifest, args.replace_base_rule)
     else:
-        build_offline_bundle(args.rules, args.output, args.version, args.minimum_client_version, args.base_manifest)
+        build_offline_bundle(args.rules, args.output, args.version, args.minimum_client_version, args.base_manifest, args.replace_base_rule)
 
 
 if __name__ == "__main__":

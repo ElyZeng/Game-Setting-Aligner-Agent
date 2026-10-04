@@ -1,0 +1,21 @@
+[
+  {
+    "game": "Forza Horizon 6",
+    "platform": "Steam",
+    "version": "6.440.853.0",
+    "fingerprint": "75102cb3dd1640ce99dc0dc4b47ea5104a58841de98152b3992974e7147bded5",
+    "status": "write_candidate",
+    "config_patterns": [
+      "%USERPROFILE%/AppData/Local/ForzaHorizon6/LocalStorage_Shared/ForzaUserConfigSelections/UserConfigSelections"
+    ],
+    "supported_settings": [
+      "resolution", "screen_mode", "vsync", "frame_limit",
+      "upscaling", "upscaling_mode", "quick_preset"
+    ],
+    "supported_values": {
+      "quick_preset": ["Very Low", "Low", "Medium", "High", "Ultra", "Extreme"]
+    },
+    "reader_id": "existing-parser",
+    "writer_id": "forza-xml-writer"
+  }
+]

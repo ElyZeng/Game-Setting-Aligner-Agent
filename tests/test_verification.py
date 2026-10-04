@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,27 @@ def test_reviewed_rules_preserve_current_writable_games():
         if rule["status"] in {"write_candidate", "write_verified"}
     }
     assert {"Cyberpunk 2077", "F1 25", "Forza Horizon 6"} <= writable_games
+
+
+def test_reviewed_forza_preset_rule_keeps_existing_settings_and_six_values():
+    rules = [
+        rule for rule in _reviewed_rules()
+        if rule["game"] == "Forza Horizon 6" and rule["platform"] == "Steam"
+    ]
+    assert len(rules) == 1
+    rule = rules[0]
+    assert rule["status"] == "write_candidate"
+    assert rule["version"] == "6.440.853.0"
+    assert rule["fingerprint"] == "75102cb3dd1640ce99dc0dc4b47ea5104a58841de98152b3992974e7147bded5"
+    assert rule["supported_settings"] == [
+        "resolution", "screen_mode", "vsync", "frame_limit",
+        "upscaling", "upscaling_mode", "quick_preset",
+    ]
+    assert rule["supported_values"] == {
+        "quick_preset": ["Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
+    }
+    replacement_path = Path(__file__).resolve().parents[1] / "release-review" / "forza-preset-v1.2.21-rule.json"
+    assert json.loads(replacement_path.read_text(encoding="utf-8")) == rules
 
 
 def test_reviewed_rules_enable_all_black_myth_retail_writer_settings():
@@ -603,6 +625,92 @@ def test_guarded_write_rejects_file_removed_after_scan(tmp_path):
         )
 
     assert writes == []
+
+
+def test_forza_preset_rule_rejects_unlisted_value_before_write(tmp_path):
+    game = "Forza Horizon 6"
+    config_path = tmp_path / "ForzaUserConfigSelections" / "UserConfigSelections"
+    config_path.parent.mkdir()
+    original = '<UserConfig Version="52" />'
+    config_path.write_text(original, encoding="utf-8")
+    config_files = [{"expanded_path": str(config_path), "found": True, "content": original}]
+    fingerprint = game_structural_fingerprint(game, config_files)
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path / "rules")
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate", "reason": "verified", "rule": {
+            "platform": "Steam", "version": "6.440.853.0", "fingerprint": fingerprint,
+            "writer_id": "forza-xml-writer", "supported_settings": ["quick_preset"],
+            "supported_values": {"quick_preset": ["Ultra"]},
+        },
+    }
+    writes = []
+
+    with pytest.raises(VerificationError, match="write_value_not_allowed:quick_preset"):
+        backup_and_write(
+            game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Low"},
+            lambda *_args: writes.append(True) or [], registry,
+        )
+
+    assert writes == []
+    assert config_path.read_text(encoding="utf-8") == original
+    assert not (registry.data_dir / "backups").exists()
+
+
+def test_forza_preset_preflight_requires_complete_xml_and_sidecar(tmp_path, monkeypatch):
+    from config_manager.settings_parser import FORZA_PRESET_SIGNATURES
+    from config_manager.settings_writer import FORZA_PRESET_V52_FIELDS
+
+    game = "Forza Horizon 6"
+    config_path = tmp_path / "ForzaHorizon6" / "LocalStorage_Shared" / "ForzaUserConfigSelections" / "UserConfigSelections"
+    config_path.parent.mkdir(parents=True)
+    sidecar = config_path.parents[2] / "fullscreen_choice"
+    sidecar.write_bytes(b"\x01")
+    root = ET.Element("UserConfig", Version="52")
+    selections = ET.SubElement(root, "selections")
+    for option_id, value in FORZA_PRESET_SIGNATURES["High"].items():
+        ET.SubElement(selections, "option", id=option_id, value=value)
+    fields = {}
+    for (tag, attr), values in FORZA_PRESET_V52_FIELDS.items():
+        fields.setdefault(tag, {})[attr] = values[3]
+    for tag, attributes in fields.items():
+        ET.SubElement(root, tag, attributes)
+    original = ET.tostring(root, encoding="unicode")
+    config_path.write_text(original, encoding="utf-8")
+    config_files = [{"expanded_path": str(config_path), "found": True, "content": original}]
+    fingerprint = game_structural_fingerprint(game, config_files)
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path / "rules")
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate", "reason": "verified", "rule": {
+            "platform": "Steam", "version": "6.440.853.0", "fingerprint": fingerprint,
+            "writer_id": "forza-xml-writer", "supported_settings": ["quick_preset"],
+            "supported_values": {"quick_preset": ["Ultra"]},
+        },
+    }
+
+    assert preflight_write(game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Ultra"}, registry)["status"] == "ok"
+    assert config_path.read_text(encoding="utf-8") == original
+    assert sidecar.read_bytes() == b"\x01"
+
+    def reject_preflight(*_args):
+        raise VerificationError("forza_preflight_reached")
+
+    writes = []
+    registry.enable_test_writes()
+    with monkeypatch.context() as patch:
+        patch.setattr("config_manager.verification.preflight_write", reject_preflight)
+        with pytest.raises(VerificationError, match="forza_preflight_reached"):
+            backup_and_write(
+                game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Ultra"},
+                lambda *_args: writes.append(True) or [], registry,
+            )
+    assert writes == []
+    assert not (registry.data_dir / "backups").exists()
+
+    sidecar.unlink()
+    with pytest.raises(VerificationError, match="forza_preset_config_incomplete"):
+        preflight_write(game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Ultra"}, registry)
+    assert config_path.read_text(encoding="utf-8") == original
 
 
 def test_forza_rejects_vsync_on_with_unlimited_frame_limit_before_write(tmp_path):

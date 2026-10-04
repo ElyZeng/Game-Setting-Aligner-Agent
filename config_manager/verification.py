@@ -18,8 +18,12 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 import requests
 
 from .package import ConfigPackage
-from .settings_parser import extract_key_settings
-from .settings_writer import GTA_ENHANCED_WRITE_CODES, _detect_parser_type, _write_gta_enhanced_settings, _write_gta_enhanced_xml, forza_auxiliary_paths
+from .settings_parser import FORZA_PRESET_SIGNATURES, extract_key_settings
+from .settings_writer import (
+    FORZA_PRESET_V52_FIELDS, GTA_ENHANCED_WRITE_CODES, _detect_parser_type,
+    _write_forza_xml, _write_gta_enhanced_settings, _write_gta_enhanced_xml,
+    forza_auxiliary_paths,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +218,32 @@ def validate_manifest(manifest: Dict[str, Any], client_version: str) -> None:
                 )
             ):
                 raise VerificationError("invalid_gta_write_rule")
+        supported = rule.get("supported_settings")
+        values = rule.get("supported_values")
+        if (
+            _normalise_title(rule["game"]) == "forzahorizon6"
+            and rule["status"] in {"write_candidate", "write_verified"}
+            and ((isinstance(supported, list) and "quick_preset" in supported)
+                 or (isinstance(values, dict) and "quick_preset" in values))
+        ):
+            allowed = values.get("quick_preset") if isinstance(values, dict) else None
+            if (
+                rule["platform"] != "Steam"
+                or rule.get("version") in (None, "", "unknown", "*")
+                or not isinstance(rule.get("fingerprint"), str)
+                or re.fullmatch(r"[0-9a-f]{64}", rule["fingerprint"]) is None
+                or rule.get("writer_id") != "forza-xml-writer"
+                or not isinstance(supported, list)
+                or len(supported) != len(set(supported))
+                or "quick_preset" not in supported
+                or not isinstance(values, dict)
+                or set(values) != {"quick_preset"}
+                or not isinstance(allowed, list)
+                or not allowed
+                or len(allowed) != len(set(allowed))
+                or any(not isinstance(value, str) or value not in FORZA_PRESET_SIGNATURES for value in allowed)
+            ):
+                raise VerificationError("invalid_forza_preset_rule")
 
 
 def merge_with_builtin(manifest: Dict[str, Any], client_version: str) -> Dict[str, Any]:
@@ -496,6 +526,52 @@ def _check_write_rule(
         if unsupported:
             raise VerificationError(f"write_setting_not_allowed:{','.join(unsupported)}")
 
+    if game == "Forza Horizon 6" and "quick_preset" in settings:
+        values = rule.get("supported_values")
+        allowed = values.get("quick_preset") if isinstance(values, dict) else None
+        if (
+            verification.get("reason") != "verified"
+            or platform != "Steam"
+            or rule.get("platform") != platform
+            or rule.get("version") != game_version
+            or rule.get("fingerprint") != fingerprint
+            or rule.get("writer_id") != "forza-xml-writer"
+            or not isinstance(supported_settings, list)
+            or "quick_preset" not in supported_settings
+            or set(settings) != {"quick_preset"}
+            or not isinstance(allowed, list)
+            or not allowed
+            or len(allowed) != len(set(allowed))
+            or set(allowed) - set(FORZA_PRESET_SIGNATURES)
+        ):
+            raise VerificationError("write_not_allowed:exact_forza_preset_rule_required")
+        if settings["quick_preset"] not in allowed:
+            raise VerificationError("write_value_not_allowed:quick_preset")
+        if (
+            len(config_files) != 1
+            or Path(str(config_files[0].get("expanded_path", ""))).name != "UserConfigSelections"
+            or Path(str(config_files[0].get("expanded_path", ""))).parent.name != "ForzaUserConfigSelections"
+            or not config_files[0].get("found")
+            or config_files[0].get("error")
+            or config_files[0].get("truncated")
+            or not isinstance(config_files[0].get("content"), str)
+            or len(forza_auxiliary_paths(config_files)) != 1
+            or not Path(forza_auxiliary_paths(config_files)[0]).is_file()
+        ):
+            raise VerificationError("write_not_allowed:forza_preset_config_incomplete")
+        try:
+            root = ET.fromstring(config_files[0]["content"])
+        except ET.ParseError as exc:
+            raise VerificationError("write_not_allowed:forza_preset_config_incomplete") from exc
+        if root.tag != "UserConfig" or root.get("Version") != "52" or any(
+            len(root.findall(f'./selections/option[@id="{option_id}"]')) != 1
+            for option_id in FORZA_PRESET_SIGNATURES[settings["quick_preset"]]
+        ) or any(
+            len(nodes := root.findall(f".//{tag}")) != 1 or attr not in nodes[0].attrib
+            for tag, attr in FORZA_PRESET_V52_FIELDS
+        ):
+            raise VerificationError("write_not_allowed:forza_preset_config_incomplete")
+
     if "grand theft auto v enhanced" not in game.casefold():
         return
     if (
@@ -547,7 +623,8 @@ def preflight_write(
     settings: Dict[str, str],
     registry: VerificationRegistry,
 ) -> Dict[str, Any]:
-    if "grand theft auto v enhanced" not in game.casefold():
+    forza_preset = game == "Forza Horizon 6" and set(settings) == {"quick_preset"}
+    if "grand theft auto v enhanced" not in game.casefold() and not forza_preset:
         raise VerificationError("preflight_not_supported")
     refreshed_files: List[Dict[str, Any]] = []
     for config_file in config_files:
@@ -567,14 +644,15 @@ def preflight_write(
     fingerprint = game_structural_fingerprint(game, refreshed_files)
     _check_write_rule(game, platform, game_version, fingerprint, refreshed_files, settings, registry)
     content = refreshed_files[0]["content"]
-    patched = _write_gta_enhanced_xml(content, settings)
+    patched = _write_forza_xml(content, settings) if forza_preset else _write_gta_enhanced_xml(content, settings)
     if patched == content:
         raise VerificationError("write_no_change")
     parsed = extract_key_settings(game, [{**refreshed_files[0], "content": patched}])
     if any(parsed.get(key) != value for key, value in settings.items()):
         raise VerificationError("write_preflight_failed:readback")
-    if _detect_parser_type(game, refreshed_files) != "gta_enhanced_xml":
-        raise VerificationError("write_not_connected:gta_enhanced_xml")
+    parser_type = "forza_xml" if forza_preset else "gta_enhanced_xml"
+    if _detect_parser_type(game, refreshed_files) != parser_type:
+        raise VerificationError(f"write_not_connected:{parser_type}")
     return {"status": "ok", "game": game, "settings": settings, "files_checked": 1}
 
 
@@ -715,7 +793,7 @@ def backup_and_write(
     config_files = refreshed_files
     fingerprint = game_structural_fingerprint(game, config_files)
     _check_write_rule(game, platform, game_version, fingerprint, config_files, settings, registry)
-    if gta:
+    if gta or (game.casefold() == "forza horizon 6" and set(settings) == {"quick_preset"}):
         preflight_write(game, platform, game_version, config_files, settings, registry)
     if (
         "forza" in game.lower()

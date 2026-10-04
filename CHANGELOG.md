@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.18 (2026-10-04)
+
+### Added
+- Forza Horizon 6 Steam build 6.440.853.0 can preflight and test-write six sampled Version 52 graphics presets (Very Low, Low, Medium, High, Ultra, Extreme) under its exact structural fingerprint.
+- Preset writes synchronize 27 coupled graphics attributes and verify the resulting preset signature on read-back. The 1.2.21 rule replaces only the matching Forza entry in the checksum-verified 1.2.20 manifest and requires client v0.08.18 or newer.
+
+### Safety
+- Forza remains `write_candidate`, not write-verified. Writes require explicit test-write consent, an exact rule and allowed value, a complete Version 52 XML file and `fullscreen_choice` sidecar, and a successful preflight before backup or modification.
+- Validation covered disposable-file transitions for all six presets and a representative Ultra first-load/restart in game; the original High configuration was restored and checked. Steam may show a cloud synchronization warning after local changes.
+
+---
+
 # v0.08.17 (2026-10-01)
 
 ### Added
