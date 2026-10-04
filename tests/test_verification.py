@@ -350,7 +350,7 @@ def test_gta_upscaling_options_and_writer_guard_sampling_source():
         "1/2", "2/3", "3/4", "5/6", "5/4", "3/2", "7/4", "2/1", "5/2",
     ]
     assert setting_options_for_game(game, "upscaling_mode", upscaling_method="FSR 1")[1:] == [
-        "Quality", "Performance",
+        "Ultra Quality", "Quality", "Balanced", "Performance",
     ]
     assert setting_options_for_game(game, "upscaling_mode", upscaling_method="FSR 3")[1:] == [
         "Performance", "Balanced", "Quality", "Native AA",
@@ -379,6 +379,17 @@ def test_gta_upscaling_options_and_writer_guard_sampling_source():
         )
     with pytest.raises(ValueError):
         _write_gta_enhanced_xml(original, {"upscaling_mode": "Native AA"})
+    with pytest.raises(ValueError, match="Unsupported GTA V Enhanced upscaling mode"):
+        _write_gta_enhanced_xml(original, {"upscaling": "FSR 1", "upscaling_mode": "Native AA"})
+    with pytest.raises(ValueError, match="requires frame generation Off"):
+        _write_gta_enhanced_xml(
+            original.replace('<FrameGenType value="0"/>', '<FrameGenType value="2"/>'),
+            {"upscaling": "FSR 3", "upscaling_mode": "Native AA"},
+        )
+    with pytest.raises(ValueError, match="method change must be atomic"):
+        _write_gta_enhanced_xml(
+            original, {"upscaling": "FSR 3", "upscaling_mode": "Native AA", "vsync": "On"},
+        )
     with pytest.raises(ValueError):
         _write_gta_enhanced_xml(original, {"quick_preset": "High"})
 
@@ -486,7 +497,7 @@ def test_gta_quick_preset_writes_complete_known_signature(tmp_path, source_prese
     *(("upscaling_mode", value, "1") for value in (
         "1/2", "2/3", "3/4", "5/6", "5/4", "3/2", "7/4", "2/1", "5/2",
     )),
-    *(("upscaling_mode", value, "2") for value in ("Quality", "Performance")),
+    *(("upscaling_mode", value, "2") for value in ("Ultra Quality", "Quality", "Balanced", "Performance")),
     *(("upscaling_mode", value, "3") for value in (
         "Performance", "Balanced", "Quality", "Native AA",
     )),
@@ -538,6 +549,52 @@ def test_gta_upscaling_write_matrix_restores_baseline(tmp_path, key, value, meth
     assert config_path.read_bytes() == baseline
     with pytest.raises(VerificationError, match="write_setting_not_allowed:quick_preset"):
         preflight_write(game, "Steam", "1.0.1158.16", config_files, {"quick_preset": "High"}, registry)
+
+
+@pytest.mark.parametrize("method,mode", [
+    ("FSR 3", "Native AA"), ("FSR 1", "Ultra Quality"), ("FSR 1", "Balanced"),
+])
+def test_gta_paired_method_and_mode_preflight_applies_atomically(tmp_path, method, mode):
+    from config_manager.package import ConfigPackage
+    from config_manager.settings_parser import extract_key_settings
+    from config_manager.settings_writer import write_settings
+
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    content = (
+        '<Settings><video/><graphics><ResScalingType value="1"/><SamplingMode value="8"/>'
+        '<fsrQuality value="2"/><fsr3Quality value="2"/><FrameGenType value="0"/>'
+        '</graphics><Presets><PresetLevel value="2"/></Presets></Settings>'
+    )
+    baseline = content.encode("utf-8")
+    config_path.write_bytes(baseline)
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    package_path = tmp_path / "independent-baseline.json"
+    package_path.write_text(json.dumps({
+        "version": 2, "games": {game: {"config_files": config_files}},
+    }), encoding="utf-8")
+    registry = VerificationRegistry("0.08.21", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    settings = {"upscaling": method, "upscaling_mode": mode}
+    rule = {
+        "game": game, "platform": "Steam", "version": "1.0.1158.16",
+        "fingerprint": game_structural_fingerprint(game, config_files),
+        "writer_id": "gta-enhanced-xml-writer", "supported_settings": list(settings),
+        "supported_values": {key: [value] for key, value in settings.items()},
+    }
+    registry.status_for = lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": rule}
+
+    assert preflight_write(game, "Steam", "1.0.1158.16", config_files, settings, registry)["status"] == "ok"
+    applied = backup_and_write(game, "Steam", "1.0.1158.16", config_files, settings, write_settings, registry)
+    assert len(applied) == 1 and applied[0]["status"] == "ok"
+    updated = config_path.read_bytes()
+    assert updated != baseline
+    parsed = extract_key_settings(game, [{**config_files[0], "content": updated.decode("utf-8")}])
+    assert all(parsed[key] == value for key, value in settings.items())
+    assert (registry.data_dir / "backups" / game.replace(" ", "_") / "0-settings.xml").read_bytes() == baseline
+    assert ConfigPackage().import_package(str(package_path))[game] == [str(config_path)]
+    assert config_path.read_bytes() == baseline
 
 
 @pytest.mark.parametrize("key,value,initial_width,initial_height,initial_mode", [

@@ -149,6 +149,18 @@ def test_gta_three_control_rule_replaces_only_exact_base_entry(tmp_path):
     assert rule["supported_settings"][-3:] == ["upscaling", "upscaling_mode", "quick_preset"]
     assert len(rule["supported_values"]["quick_preset"]) == 6
 
+def test_gta_upscaling_correction_candidate_changes_only_allowed_mode():
+    review_dir = Path(__file__).resolve().parents[1] / "release-review"
+    published = json.loads((review_dir / "gta-three-controls-v1.2.24-rule.json").read_text(encoding="utf-8"))[0]
+    candidate = json.loads((review_dir / "gta-upscaling-correction-rule-candidate.json").read_text(encoding="utf-8"))[0]
+    published_modes = published["supported_values"]["upscaling_mode"]
+    candidate_modes = candidate["supported_values"]["upscaling_mode"]
+
+    assert "Ultra Quality" not in published_modes
+    assert candidate_modes == [*published_modes[:-4], "Ultra Quality", *published_modes[-4:]]
+    assert {**candidate, "supported_values": published["supported_values"]} == published
+
+
 def test_forza_replacement_requires_exact_rule_and_preserves_other_games(tmp_path):
     existing = {
         "game": "Forza Horizon 6", "platform": "Steam", "version": "6.440.853.0",

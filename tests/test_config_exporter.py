@@ -743,6 +743,22 @@ class TestGtaEnhancedParser:
         assert result["vsync"] == "On"
         assert result["frame_limit"] == "Unlimited"
 
+    @pytest.mark.parametrize("code,mode", [("1", "Ultra Quality"), ("3", "Balanced")])
+    def test_reads_saved_fsr1_ultra_quality_and_balanced(self, code, mode):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = (
+            '<Settings><video/><graphics><ResScalingType value="2"/>'
+            f'<fsrQuality value="{code}"/><FrameGenType value="0"/>'
+            '</graphics></Settings>'
+        )
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+        assert result["upscaling"] == "FSR 1"
+        assert result["upscaling_mode"] == mode
+
     def test_reads_saved_sampling_without_stale_fsr_quality(self):
         from config_manager.settings_parser import extract_key_settings
 

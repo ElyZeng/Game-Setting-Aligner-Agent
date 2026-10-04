@@ -673,7 +673,7 @@ GTA_ENHANCED_SCALING_MODES = {
         "1/2": "0", "2/3": "1", "3/4": "2", "5/6": "3", "5/4": "4",
         "3/2": "5", "7/4": "6", "2/1": "7", "5/2": "8",
     }),
-    "2": ("fsrQuality", {"Quality": "2", "Performance": "4"}),
+    "2": ("fsrQuality", {"Ultra Quality": "1", "Quality": "2", "Balanced": "3", "Performance": "4"}),
     "3": ("fsr3Quality", {"Performance": "0", "Balanced": "1", "Quality": "2", "Native AA": "3"}),
 }
 
@@ -840,7 +840,7 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
             raise ValueError("GTA V Enhanced screen mode requires 1920x1080")
 
     if UPSCALING in settings:
-        if set(settings) != {UPSCALING}:
+        if set(settings) not in ({UPSCALING}, {UPSCALING, UPSCALING_MODE}):
             raise ValueError("GTA V Enhanced method change must be atomic")
         frame_generation = root.find("./graphics/FrameGenType")
         if frame_generation is None or frame_generation.get("value") != "0":
@@ -861,13 +861,17 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
     mode_codes = None
     if UPSCALING_MODE in settings:
         scaling = root.find("./graphics/ResScalingType")
-        mode_spec = GTA_ENHANCED_SCALING_MODES.get(scaling.get("value")) if scaling is not None else None
+        target_method = (
+            GTA_ENHANCED_WRITE_CODES[UPSCALING][settings[UPSCALING]]
+            if UPSCALING in settings else scaling.get("value") if scaling is not None else None
+        )
+        mode_spec = GTA_ENHANCED_SCALING_MODES.get(target_method)
         if mode_spec is None or settings[UPSCALING_MODE] not in mode_spec[1]:
             raise ValueError("Unsupported GTA V Enhanced upscaling mode for current method")
         frame_generation = root.find("./graphics/FrameGenType")
         if frame_generation is not None and frame_generation.get("value") != "0":
             raise ValueError("GTA V Enhanced scaling mode change requires frame generation Off")
-        if scaling.get("value") == "3" and frame_generation is None:
+        if target_method == "3" and frame_generation is None:
             raise ValueError("GTA V Enhanced FSR 3 quality change requires frame generation Off")
         mode_tag, mode_codes = mode_spec
 

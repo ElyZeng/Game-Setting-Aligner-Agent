@@ -224,6 +224,14 @@ Not applicable | Independent Dynamic Resolution | No retail UI option; exclude |
 
 No real-file write matrix can run while the approved allowlist is absent. Establish an exact rule and freshly exported, independently restorable private full-config baseline, paused cloud sync and explicit tester consent before real-file testing. Then expand each legal approved setting/value into an atomic case in 03-write-evidence/write-results.txt: restore and hash-check baseline; preflight; guarded Apply; re-detect and parser read-back; check only owned files changed; restore and hash-check again. Stop on missing/mismatched baseline, unrelated file changes, launcher activity or cloud-sync resumption. Real-file write testing and any inferred-value promotion require separate authorization; nothing here changes candidate: game_not_listed.
 
+FSR 1 品質補樣（2026-10-05，僅遊戲內儲存與唯讀）：測試者確認 AMD FSR 1 品質選單為超高品質／品質／平衡／效能。先僅選超高品質、儲存並完整退出，遊戲及啟動器均未執行；兩次重新偵測同一份完整 XML 與 parser 讀值一致，ResScalingType=2、fsrQuality=1，SHA-256 為 7ADF140DB5131550301934D202912F7F369DAD49799C50ABC0B1787B4F39F7C6，舊 parser 回傳模式 null。再僅將品質改成平衡、儲存並完整退出；檔案雜湊已變且兩次重新偵測／解析一致，ResScalingType=2、fsrQuality=3，SHA-256 為 75B748A42D817051FEBA84CE12A31A6C90AA2A98114CC8616EDC649212CB673E，舊 parser 同樣回傳 null。結合先前遊戲內取樣，FSR 1 四值為 Ultra Quality=1、Quality=2、Balanced=3、Performance=4；GUI、parser 和 writer 候選碼表已補齊，修正後目前平衡的真實檔案連續兩次讀回正確。沒有執行 Game Tuner 實檔寫入；新增值的 writer 寫回及遊戲重啟穩定性尚未驗證，正式規則仍維持精確版本／指紋、逐值 allowlist 和測試寫入同意門檻。
+
+FSR 1 規則預覽（2026-10-05，未發布／無寫入）：保留已發布 v1.2.24 規則不變，另建立未定版號的審核候選，只在 upscaling_mode allowlist 增加 Ultra Quality；測試確認其他欄位與舊規則逐項相同。以現存的 FSR 1／Balanced 遊戲存檔對照精確結構指紋及本地候選規則，對 Ultra Quality 進行唯讀 preflight 通過；前後原始檔 SHA-256 均為 75B748A42D817051FEBA84CE12A31A6C90AA2A98114CC8616EDC649212CB673E。原 v1.2.24 仍不允許此新值；未安裝或發布新規則，未執行真實檔案 Apply／還原，也未證明 writer-origin 遊戲重啟後的持久性。取樣後遊戲仍儲存於 FSR 1／Balanced，待測試者決定是否透過遊戲恢復原 High／Sampling 5/2。
+
+取樣後狀態決定（2026-10-05）：測試者明確選擇保留目前遊戲儲存的 FSR 1／Balanced，不恢復原 High／Sampling 5/2；本工具未寫入或匯入遊戲設定檔。
+
+FSR 1 超高品質實檔寫入驗證（2026-10-05）：測試者明確同意只測一次超高品質並精確還原到目前的平衡，確認遊戲及 Rockstar 程序退出、雲端同步暫停。從當前唯一實檔匯出完整獨立 v2 基線，套件 SHA-256 為 68DB1570D20A27CA2E6F15A038FC80AD7BE15E58F05ADAFE4ECB890B96D47C47，內容 SHA-256 為 75B748A42D817051FEBA84CE12A31A6C90AA2A98114CC8616EDC649212CB673E；原始位元組、Steam 1.0.1158.16、精確結構指紋與規則一致。在隔離拷貝先通過 no-change 還原／preflight／guarded Apply／parser 讀回／逐位元組還原，再以未發布的 v1.2.25 規則預覽對真實檔案執行相同單例，全部通過。實檔僅改 fsrQuality 由 3 至 1，parser 讀為 FSR 1／Ultra Quality；獨立套件回復後再次重新偵測，FSR 1／Balanced 及原 SHA-256 完全一致，測試寫入同意旗標已關閉。沒有在遊戲內測 writer-origin 重啟持久性，不能提升到 write_verified；發佈前另須核對四項資產及公開版號。
+
 停止條件 / Stop Conditions
 - 不可使用 Forza XML Writer 測 GTA。
 - Generic XML compatibility is not proof of safe Write support.

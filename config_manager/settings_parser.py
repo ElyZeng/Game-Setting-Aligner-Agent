@@ -344,7 +344,7 @@ def setting_options_for_game(
         if key == UPSCALING_MODE:
             modes = {
                 "Sampling": ["1/2", "2/3", "3/4", "5/6", "5/4", "3/2", "7/4", "2/1", "5/2"],
-                "FSR 1": ["Quality", "Performance"],
+                "FSR 1": ["Ultra Quality", "Quality", "Balanced", "Performance"],
                 "FSR 3": ["Performance", "Balanced", "Quality", "Native AA"],
             }
             return ["—", *modes.get(upscaling_method or "", [])]
@@ -1018,7 +1018,9 @@ def _parse_gta_enhanced_xml(content: str) -> Dict[str, Optional[str]]:
         result[UPSCALING] = "FSR 1"
         quality = root.find("./graphics/fsrQuality")
         if quality is not None:
-            result[UPSCALING_MODE] = {"2": "Quality", "4": "Performance"}.get(quality.get("value"))
+            result[UPSCALING_MODE] = {
+                "1": "Ultra Quality", "2": "Quality", "3": "Balanced", "4": "Performance",
+            }.get(quality.get("value"))
         frame_generation = root.find("./graphics/FrameGenType")
         if frame_generation is not None:
             result[FRAME_GENERATION] = {"0": "Off"}.get(frame_generation.get("value"))

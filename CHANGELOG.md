@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.22 (2026-10-05)
+
+### Fixed
+- GTA V Enhanced can apply Upscaling Method and its selected Mode together; the mode is checked against the target method without relaxing frame-generation or unrelated-setting guards.
+- AMD FSR 1 now offers all four game-observed modes: Ultra Quality, Quality, Balanced, and Performance. The reader and guarded writer use the corresponding saved XML values.
+
+### Validation
+- Verification rules v1.2.25 replace only the exact GTA Steam rule to allow Ultra Quality. The rule remains `write_candidate` and requires the exact game version and structural fingerprint plus explicit test-write consent.
+- A real-file Ultra Quality write passed preflight, backup, parser read-back, and byte-exact independent restoration to the original FSR 1 Balanced state. Writer-origin in-game restart persistence has not been tested.
+
+---
+
 # v0.08.21 (2026-10-05)
 
 ### Added
