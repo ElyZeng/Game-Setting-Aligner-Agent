@@ -669,6 +669,8 @@ def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
 # ── Grand Theft Auto V Enhanced XML Writer ──────────────────────────
 
 GTA_ENHANCED_WRITE_CODES = {
+    RESOLUTION: {"1920x1080": ("1920", "1080"), "1600x900": ("1600", "900")},
+    SCREEN_MODE: {"Fullscreen": "0", "Borderless Windowed": "2", "Borderless Fullscreen": "3"},
     VSYNC: {"Off": "0", "On": "1"},
     FRAME_LIMIT: {"Unlimited": "0", **{f"{fps} FPS": str(fps) for fps in (30, 40, 45, 60, 72, 75, 90, 105, 120)}},
     FRAME_GENERATION: {"Off": "0", "AMD FSR 3": "2"},
@@ -685,6 +687,20 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
     if root.tag != "Settings":
         raise ValueError("Unexpected GTA V Enhanced XML root")
 
+    if RESOLUTION in settings:
+        mode = root.find("./video/Windowed")
+        if set(settings) != {RESOLUTION} or mode is None or mode.get("value") != "2":
+            raise ValueError("GTA V Enhanced resolution requires Borderless Windowed")
+    if SCREEN_MODE in settings:
+        width = root.find("./video/ScreenWidth")
+        height = root.find("./video/ScreenHeight")
+        if (
+            set(settings) != {SCREEN_MODE}
+            or width is None or width.get("value") != "1920"
+            or height is None or height.get("value") != "1080"
+        ):
+            raise ValueError("GTA V Enhanced screen mode requires 1920x1080")
+
     if FRAME_GENERATION in settings:
         scaling = root.find("./graphics/ResScalingType")
         quality = root.find("./graphics/fsr3Quality")
@@ -699,19 +715,27 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
         ):
             raise ValueError("GTA V Enhanced frame generation requires FSR 3 Quality and inactive Sampling 1/2")
 
-    for key, parent, tag in ((VSYNC, "video", "VSync"), (FRAME_LIMIT, "video", "FrameLimit"), (FRAME_GENERATION, "graphics", "FrameGenType")):
+    for key, parent, tag, component in (
+        (RESOLUTION, "video", "ScreenWidth", 0), (RESOLUTION, "video", "ScreenHeight", 1),
+        (SCREEN_MODE, "video", "Windowed", None),
+        (VSYNC, "video", "VSync", None), (FRAME_LIMIT, "video", "FrameLimit", None),
+        (FRAME_GENERATION, "graphics", "FrameGenType", None),
+    ):
         if key not in settings:
             continue
         node = root.find(f"./{parent}/{tag}")
         if node is None or len(root.findall(f".//{tag}")) != 1:
             raise ValueError(f"Missing or ambiguous GTA V Enhanced {tag} node")
-        if node.get("value") not in GTA_ENHANCED_WRITE_CODES[key].values():
+        codes = GTA_ENHANCED_WRITE_CODES[key]
+        known = (code[component] for code in codes.values()) if component is not None else codes.values()
+        if node.get("value") not in known:
             raise ValueError(f"Unsupported GTA V Enhanced {tag} value")
         matches = list(re.finditer(rf'(<{tag}\b[^>]*\bvalue=")([^"]*)(")', content))
         if len(matches) != 1 or matches[0].group(2) != node.get("value"):
             raise ValueError(f"Unpatchable GTA V Enhanced {tag} node")
         match = matches[0]
-        content = content[:match.start(2)] + GTA_ENHANCED_WRITE_CODES[key][settings[key]] + content[match.end(2):]
+        replacement = codes[settings[key]]
+        content = content[:match.start(2)] + (replacement[component] if component is not None else replacement) + content[match.end(2):]
     return content
 
 

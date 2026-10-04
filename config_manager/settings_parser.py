@@ -334,6 +334,13 @@ def setting_options_for_game(
     upscaling_method: Optional[str] = None,
 ) -> List[str]:
     name = game_name.casefold()
+    if "grand theft auto v enhanced" in name:
+        if key == RESOLUTION:
+            return ["—", "1920x1080", "1600x900"]
+        if key == SCREEN_MODE:
+            return ["—", "Fullscreen", "Borderless Windowed", "Borderless Fullscreen"]
+        if key == FRAME_GENERATION:
+            return ["—", "Off", "AMD FSR 3"]
     if "black myth" in name or "wukong" in name:
         if key == DYNAMIC_RESOLUTION:
             return ["—"]

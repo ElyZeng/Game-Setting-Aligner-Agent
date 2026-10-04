@@ -311,6 +311,85 @@ def test_gta_preflight_requires_exact_rule_and_value_without_writing(tmp_path):
     assert not registry.test_write_enabled()
 
 
+def test_gta_reviewed_display_options_and_writer_guards():
+    from config_manager.settings_writer import _write_gta_enhanced_xml
+
+    game = "Grand Theft Auto V Enhanced"
+    assert setting_options_for_game(game, "resolution")[1:] == ["1920x1080", "1600x900"]
+    assert setting_options_for_game(game, "screen_mode")[1:] == [
+        "Fullscreen", "Borderless Windowed", "Borderless Fullscreen",
+    ]
+    assert setting_options_for_game(game, "frame_generation", upscaling_method="FSR 3")[1:] == [
+        "Off", "AMD FSR 3",
+    ]
+
+    original = (
+        '<Settings><video><ScreenWidth value="1920"/><ScreenHeight value="1080"/>'
+        '<Windowed value="2"/><VSync value="1"/><FrameLimit value="120"/></video></Settings>'
+    )
+    resized = _write_gta_enhanced_xml(original, {"resolution": "1600x900"})
+    assert '<ScreenWidth value="1600"/>' in resized
+    assert '<ScreenHeight value="900"/>' in resized
+    fullscreen = _write_gta_enhanced_xml(original, {"screen_mode": "Borderless Fullscreen"})
+    assert '<Windowed value="3"/>' in fullscreen
+    with pytest.raises(ValueError, match="requires Borderless Windowed"):
+        _write_gta_enhanced_xml(fullscreen, {"resolution": "1600x900"})
+    with pytest.raises(ValueError, match="requires 1920x1080"):
+        _write_gta_enhanced_xml(resized, {"screen_mode": "Borderless Fullscreen"})
+    with pytest.raises(ValueError, match="Unsupported GTA"):
+        _write_gta_enhanced_xml(original, {"screen_mode": "Windowed"})
+
+
+@pytest.mark.parametrize("key,value,initial_width,initial_height,initial_mode", [
+    ("resolution", "1600x900", "1920", "1080", "2"),
+    ("resolution", "1920x1080", "1600", "900", "2"),
+    ("screen_mode", "Fullscreen", "1920", "1080", "2"),
+    ("screen_mode", "Borderless Fullscreen", "1920", "1080", "2"),
+    ("screen_mode", "Borderless Windowed", "1920", "1080", "0"),
+])
+def test_gta_reviewed_display_write_matrix_restores_baseline(
+    tmp_path, key, value, initial_width, initial_height, initial_mode,
+):
+    from config_manager.package import ConfigPackage
+    from config_manager.settings_parser import extract_key_settings
+    from config_manager.settings_writer import write_settings
+
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    content = (
+        f'<Settings><video><ScreenWidth value="{initial_width}"/>'
+        f'<ScreenHeight value="{initial_height}"/><Windowed value="{initial_mode}"/>'
+        '<VSync value="1"/><FrameLimit value="120"/></video></Settings>'
+    )
+    baseline = content.encode("utf-8")
+    config_path.write_bytes(baseline)
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    package_path = tmp_path / "independent-baseline.json"
+    package_path.write_text(json.dumps({
+        "version": 2, "games": {game: {"config_files": config_files}},
+    }), encoding="utf-8")
+    registry = VerificationRegistry("0.08.20", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    rule = {
+        "game": game, "platform": "Steam", "version": "1.0.1158.16",
+        "fingerprint": game_structural_fingerprint(game, config_files),
+        "writer_id": "gta-enhanced-xml-writer", "supported_settings": [key],
+        "supported_values": {key: [value]},
+    }
+    registry.status_for = lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": rule}
+
+    assert preflight_write(game, "Steam", "1.0.1158.16", config_files, {key: value}, registry)["status"] == "ok"
+    result = backup_and_write(game, "Steam", "1.0.1158.16", config_files, {key: value}, write_settings, registry)
+    assert len(result) == 1 and result[0]["status"] == "ok"
+    updated = config_path.read_bytes()
+    assert updated != baseline
+    assert extract_key_settings(game, [{**config_files[0], "content": updated.decode("utf-8")}])[key] == value
+    assert (registry.data_dir / "backups" / game.replace(" ", "_") / "0-settings.xml").read_bytes() == baseline
+    assert ConfigPackage().import_package(str(package_path))[game] == [str(config_path)]
+    assert config_path.read_bytes() == baseline
+
+
 def test_gta_apply_rejects_unapproved_value_before_writer(tmp_path):
     game = "Grand Theft Auto V Enhanced"
     config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
