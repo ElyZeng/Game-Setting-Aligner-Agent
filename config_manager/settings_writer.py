@@ -668,13 +668,146 @@ def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
 
 # ── Grand Theft Auto V Enhanced XML Writer ──────────────────────────
 
+GTA_ENHANCED_SCALING_MODES = {
+    "1": ("SamplingMode", {
+        "1/2": "0", "2/3": "1", "3/4": "2", "5/6": "3", "5/4": "4",
+        "3/2": "5", "7/4": "6", "2/1": "7", "5/2": "8",
+    }),
+    "2": ("fsrQuality", {"Quality": "2", "Performance": "4"}),
+    "3": ("fsr3Quality", {"Performance": "0", "Balanced": "1", "Quality": "2", "Native AA": "3"}),
+}
+
+GTA_ENHANCED_PRESET_ORDER = (
+    "Lowest", "High", "High with Ray Tracing", "Very High",
+    "Very High with Ray Tracing", "Maximum with Ray Tracing",
+)
+GTA_ENHANCED_PRESET_FIELDS = {
+    ("graphics", "Tessellation", "value"): ("0", "2", "3", "3", "3", "3"),
+    ("graphics", "LodScale", "value"): ("0.000000", "0.000000", "1.000000", "1.000000", "1.000000", "1.000000"),
+    ("graphics", "ShadowQuality", "value"): ("1", "2", "2", "3", "3", "3"),
+    ("graphics", "ReflectionQuality", "value"): ("1", "2", "1", "3", "2", "3"),
+    ("graphics", "SSAOType", "value"): ("1", "2", "2", "2", "2", "2"),
+    ("graphics", "AnisotropicFiltering", "value"): ("4", "4", "4", "16", "16", "16"),
+    ("graphics", "TextureQuality", "value"): ("0", "2", "2", "2", "2", "2"),
+    ("graphics", "ParticleQuality", "value"): ("0", "3", "3", "3", "3", "3"),
+    ("graphics", "WaterQuality", "value"): ("0", "2", "3", "3", "3", "3"),
+    ("graphics", "GrassQuality", "value"): ("0", "2", "2", "3", "3", "3"),
+    ("graphics", "ShaderQuality", "value"): ("0", "2", "2", "2", "2", "2"),
+    ("graphics", "Shadow_SoftShadows", "value"): ("1", "2", "2", "3", "3", "3"),
+    ("graphics", "UltraShadows_Enabled", "value"): ("false", "false", "false", "true", "false", "false"),
+    ("graphics", "Shadow_LongShadows", "value"): ("false", "false", "false", "false", "false", "true"),
+    ("graphics", "Lighting_FogVolumes", "value"): ("false", "false", "true", "true", "true", "true"),
+    ("graphics", "CityDensity", "value"): ("0.000000", "0.900000", "1.000000", "1.000000", "1.000000", "1.000000"),
+    ("graphics", "PedVarietyMultiplier", "value"): ("0.800000", "0.900000", "1.000000", "1.000000", "1.000000", "1.000000"),
+    ("graphics", "VehicleVarietyMultiplier", "value"): ("0.800000", "0.900000", "1.000000", "1.000000", "1.000000", "1.000000"),
+    ("graphics", "PostFX", "value"): ("0", "2", "3", "3", "3", "3"),
+    ("graphics", "DoF", "value"): ("0", "1", "2", "2", "2", "2"),
+    ("graphics", "HdStreamingInFlight", "value"): ("false", "true", "true", "true", "true", "true"),
+    ("graphics", "MaxLodScale", "value"): ("0.000000", "0.000000", "0.000000", "0.000000", "0.000000", "1.000000"),
+    ("graphics", "LensFlare_HalfRes", "value"): ("true", "false", "false", "false", "false", "false"),
+    ("graphics", "LensArtefacts_HalfRes", "value"): ("true", "false", "false", "false", "false", "false"),
+    ("graphics", "Raytracing_Enabled", "value"): ("false", "false", "true", "false", "true", "true"),
+    ("graphics", "Raytracing_StaticBvhRadius", "value"): ("256.000000", "256.000000", "256.000000", "256.000000", "512.000000", "512.000000"),
+    ("graphics", "Raytracing_StaticBvhAngularThreshold", "value"): ("0.750000", "0.750000", "0.750000", "0.750000", "0.500000", "0.500000"),
+    ("graphics", "Raytracing_DynamicBvhRadius", "value"): ("64.000000", "64.000000", "64.000000", "64.000000", "128.000000", "128.000000"),
+    ("graphics", "Raytracing_DynamicBvhAngularThreshold", "value"): ("1.500000", "1.500000", "1.500000", "1.500000", "1.000000", "1.000000"),
+    ("graphics", "Raytracing_VehicleBvhRadius", "value"): ("256.000000", "256.000000", "256.000000", "256.000000", "512.000000", "512.000000"),
+    ("graphics", "Raytracing_TreeBvhRadius", "value"): ("256.000000", "256.000000", "256.000000", "256.000000", "512.000000", "512.000000"),
+    ("graphics", "Raytracing_GrassBvhEnabled", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "DeferredReflectionsEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredCubeReflectionsEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredWaterReflectionsEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredMirrorReflectionsEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredCubeReflectionsComputeEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredWaterReflectionsComputeEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredMirrorReflectionsComputeEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "RTShadows_Enabled", "value"): ("false", "false", "true", "false", "true", "true"),
+    ("graphics", "RTShadows_Quality", "value"): ("0", "0", "1", "0", "2", "3"),
+    ("graphics", "RTAmbientOcclusion_Enabled", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "RTAmbientOcclusion_Quality", "value"): ("0", "0", "0", "0", "2", "3"),
+    ("graphics", "RTReflection_Enabled", "value"): ("false", "false", "true", "false", "true", "true"),
+    ("graphics", "RTReflection_Quality", "value"): ("0", "0", "1", "0", "2", "3"),
+    ("graphics", "RTIndirectDiffuse_Enabled", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "RTIndirectDiffuse_Quality", "value"): ("0", "0", "0", "0", "2", "3"),
+    ("graphics", "RTCharacterShadow_Enabled", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "RTApplyAOToFillLights", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "RTReflection_FullRes_Enabled", "value"): ("false", "false", "false", "false", "false", "true"),
+    ("graphics", "PlayerHeadlightShadowsQuality", "value"): ("0", "0", "1", "2", "2", "3"),
+    ("graphics", "NetPlayerHeadlightsCastShadows", "value"): ("false", "false", "false", "true", "true", "true"),
+    ("graphics", "AllVehicleHeadlightShadowsQuality", "value"): ("0", "0", "0", "2", "2", "3"),
+    ("Presets", "PresetLevel", "value"): ("1", "2", "3", "4", "5", "6"),
+    ("Presets", "BVHQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTShadowQuality", "value"): ("0", "0", "1", "0", "2", "3"),
+    ("Presets", "RTReflectionQuality", "value"): ("0", "0", "1", "0", "2", "3"),
+    ("Presets", "RTDynamicQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTStaticQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTVehicleQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTTreeQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTGrassQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTAOQuality", "value"): ("0", "0", "0", "0", "2", "3"),
+    ("Presets", "RTGIQuality", "value"): ("0", "0", "0", "0", "2", "3"),
+    ("Presets", "LightingQuality", "value"): ("0", "0", "1", "2", "2", "3"),
+    ("Presets", "PostFXQuality", "value"): ("0", "2", "3", "3", "3", "3"),
+    ("Presets", "ReflectionQuality", "value"): ("1", "2", "1", "3", "2", "3"),
+}
+
 GTA_ENHANCED_WRITE_CODES = {
     RESOLUTION: {"1920x1080": ("1920", "1080"), "1600x900": ("1600", "900")},
     SCREEN_MODE: {"Fullscreen": "0", "Borderless Windowed": "2", "Borderless Fullscreen": "3"},
     VSYNC: {"Off": "0", "On": "1"},
     FRAME_LIMIT: {"Unlimited": "0", **{f"{fps} FPS": str(fps) for fps in (30, 40, 45, 60, 72, 75, 90, 105, 120)}},
+    UPSCALING: {"Off": "0", "Sampling": "1", "FSR 1": "2", "FSR 3": "3"},
     FRAME_GENERATION: {"Off": "0", "AMD FSR 3": "2"},
+    UPSCALING_MODE: {
+        value: value for _, codes in GTA_ENHANCED_SCALING_MODES.values() for value in codes
+    },
+    QUICK_PRESET: {value: str(index + 1) for index, value in enumerate(GTA_ENHANCED_PRESET_ORDER)},
 }
+
+
+def _write_gta_enhanced_preset_xml(content: str, root: ET.Element, preset: str) -> str:
+    scaling = root.find("./graphics/ResScalingType")
+    sampling = root.find("./graphics/SamplingMode")
+    frame_generation = root.find("./graphics/FrameGenType")
+    if (
+        scaling is None or scaling.get("value") != "1"
+        or sampling is None or sampling.get("value") != "8"
+        or frame_generation is None or frame_generation.get("value") != "0"
+    ):
+        raise ValueError("GTA V Enhanced preset requires observed Sampling 5/2 and frame generation Off")
+
+    current_values = {}
+    for section, tag, attribute in GTA_ENHANCED_PRESET_FIELDS:
+        nodes = root.findall(f"./{section}/{tag}")
+        if len(nodes) != 1 or nodes[0].get(attribute) is None:
+            raise ValueError("Incomplete GTA V Enhanced source preset")
+        current_values[(section, tag, attribute)] = nodes[0].get(attribute)
+    sources = [
+        index for index in range(len(GTA_ENHANCED_PRESET_ORDER))
+        if all(current_values[field] == values[index] for field, values in GTA_ENHANCED_PRESET_FIELDS.items())
+    ]
+    if len(sources) != 1:
+        raise ValueError("Unsupported GTA V Enhanced source preset")
+    target = GTA_ENHANCED_PRESET_ORDER.index(preset)
+    if target == sources[0]:
+        raise ValueError("GTA V Enhanced preset already selected")
+
+    for section in ("graphics", "Presets"):
+        sections = list(re.finditer(rf"<{section}\b[^>]*>(.*?)</{section}>", content, re.DOTALL))
+        if len(sections) != 1:
+            raise ValueError("Unpatchable GTA V Enhanced preset section")
+        match = sections[0]
+        body = match.group(1)
+        for (parent, tag, attribute), values in GTA_ENHANCED_PRESET_FIELDS.items():
+            if parent != section:
+                continue
+            fields = list(re.finditer(rf'(<{tag}\b[^>]*\b{attribute}=")([^"]*)(")', body))
+            if len(fields) != 1 or fields[0].group(2) != current_values[(parent, tag, attribute)]:
+                raise ValueError("Unpatchable GTA V Enhanced preset field")
+            field = fields[0]
+            body = body[:field.start(2)] + values[target] + body[field.end(2):]
+        content = content[:match.start(1)] + body + content[match.end(1):]
+    return content
 
 
 def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
@@ -686,6 +819,11 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
     root = ET.fromstring(content)
     if root.tag != "Settings":
         raise ValueError("Unexpected GTA V Enhanced XML root")
+
+    if QUICK_PRESET in settings:
+        if set(settings) != {QUICK_PRESET}:
+            raise ValueError("GTA V Enhanced preset change must be atomic")
+        return _write_gta_enhanced_preset_xml(content, root, settings[QUICK_PRESET])
 
     if RESOLUTION in settings:
         mode = root.find("./video/Windowed")
@@ -701,6 +839,38 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
         ):
             raise ValueError("GTA V Enhanced screen mode requires 1920x1080")
 
+    if UPSCALING in settings:
+        if set(settings) != {UPSCALING}:
+            raise ValueError("GTA V Enhanced method change must be atomic")
+        frame_generation = root.find("./graphics/FrameGenType")
+        if frame_generation is None or frame_generation.get("value") != "0":
+            raise ValueError("GTA V Enhanced method change requires frame generation Off")
+        current_method = root.find("./graphics/ResScalingType")
+        current_spec = GTA_ENHANCED_SCALING_MODES.get(current_method.get("value")) if current_method is not None else None
+        if current_spec is not None:
+            current_mode = root.find(f"./graphics/{current_spec[0]}")
+            if current_mode is None or current_mode.get("value") not in current_spec[1].values():
+                raise ValueError("GTA V Enhanced source method has unknown quality or scale")
+        method = GTA_ENHANCED_WRITE_CODES[UPSCALING][settings[UPSCALING]]
+        if method != "0":
+            mode_spec = GTA_ENHANCED_SCALING_MODES[method]
+            mode_node = root.find(f"./graphics/{mode_spec[0]}")
+            if mode_node is None or mode_node.get("value") not in mode_spec[1].values():
+                raise ValueError("GTA V Enhanced target method has unknown quality or scale")
+    mode_tag = None
+    mode_codes = None
+    if UPSCALING_MODE in settings:
+        scaling = root.find("./graphics/ResScalingType")
+        mode_spec = GTA_ENHANCED_SCALING_MODES.get(scaling.get("value")) if scaling is not None else None
+        if mode_spec is None or settings[UPSCALING_MODE] not in mode_spec[1]:
+            raise ValueError("Unsupported GTA V Enhanced upscaling mode for current method")
+        frame_generation = root.find("./graphics/FrameGenType")
+        if frame_generation is not None and frame_generation.get("value") != "0":
+            raise ValueError("GTA V Enhanced scaling mode change requires frame generation Off")
+        if scaling.get("value") == "3" and frame_generation is None:
+            raise ValueError("GTA V Enhanced FSR 3 quality change requires frame generation Off")
+        mode_tag, mode_codes = mode_spec
+
     if FRAME_GENERATION in settings:
         scaling = root.find("./graphics/ResScalingType")
         quality = root.find("./graphics/fsr3Quality")
@@ -715,18 +885,22 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
         ):
             raise ValueError("GTA V Enhanced frame generation requires FSR 3 Quality and inactive Sampling 1/2")
 
-    for key, parent, tag, component in (
+    patches = [
         (RESOLUTION, "video", "ScreenWidth", 0), (RESOLUTION, "video", "ScreenHeight", 1),
         (SCREEN_MODE, "video", "Windowed", None),
         (VSYNC, "video", "VSync", None), (FRAME_LIMIT, "video", "FrameLimit", None),
+        (UPSCALING, "graphics", "ResScalingType", None),
         (FRAME_GENERATION, "graphics", "FrameGenType", None),
-    ):
+    ]
+    if mode_tag is not None:
+        patches.append((UPSCALING_MODE, "graphics", mode_tag, None))
+    for key, parent, tag, component in patches:
         if key not in settings:
             continue
         node = root.find(f"./{parent}/{tag}")
         if node is None or len(root.findall(f".//{tag}")) != 1:
             raise ValueError(f"Missing or ambiguous GTA V Enhanced {tag} node")
-        codes = GTA_ENHANCED_WRITE_CODES[key]
+        codes = mode_codes if key == UPSCALING_MODE else GTA_ENHANCED_WRITE_CODES[key]
         known = (code[component] for code in codes.values()) if component is not None else codes.values()
         if node.get("value") not in known:
             raise ValueError(f"Unsupported GTA V Enhanced {tag} value")

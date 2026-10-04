@@ -339,8 +339,22 @@ def setting_options_for_game(
             return ["—", "1920x1080", "1600x900"]
         if key == SCREEN_MODE:
             return ["—", "Fullscreen", "Borderless Windowed", "Borderless Fullscreen"]
+        if key == UPSCALING:
+            return ["—", "Off", "Sampling", "FSR 1", "FSR 3"]
+        if key == UPSCALING_MODE:
+            modes = {
+                "Sampling": ["1/2", "2/3", "3/4", "5/6", "5/4", "3/2", "7/4", "2/1", "5/2"],
+                "FSR 1": ["Quality", "Performance"],
+                "FSR 3": ["Performance", "Balanced", "Quality", "Native AA"],
+            }
+            return ["—", *modes.get(upscaling_method or "", [])]
         if key == FRAME_GENERATION:
             return ["—", "Off", "AMD FSR 3"]
+        if key == QUICK_PRESET:
+            return [
+                "—", "Lowest", "High", "High with Ray Tracing", "Very High",
+                "Very High with Ray Tracing", "Maximum with Ray Tracing",
+            ]
     if "black myth" in name or "wukong" in name:
         if key == DYNAMIC_RESOLUTION:
             return ["—"]

@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.08.21 (2026-10-05)
+
+### Added
+- Grand Theft Auto V Enhanced Steam build 1.0.1158.16 exposes Upscaling Method, dependent Upscaling Mode, and six observed Quick Preset values through guarded writes. Preset writes update the complete 67-field game-saved signature instead of only the preset label.
+- Verification rules v1.2.24 retain the existing GTA controls and all other v1.2.23 rules, adding these three options only for the exact Steam version and structural fingerprint. The rule remains `write_candidate` and requires explicit test-write consent.
+
+### Validation
+- All six presets passed real-file preflight, Apply, parser read-back, backup, and exact independent High restoration. Very High and Very High with Ray Tracing also matched the game UI after restart; the other four values have not each been tested for writer-origin restart persistence.
+- Upscaling Method and Mode writes remain restricted to their observed values and valid method-specific dependencies.
+
+---
+
 # v0.08.18 (2026-10-04)
 
 ### Added

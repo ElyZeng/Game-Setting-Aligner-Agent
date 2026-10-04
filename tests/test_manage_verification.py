@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -114,6 +115,39 @@ def test_gta_release_build_preserves_checksum_verified_base_rules(tmp_path):
     with pytest.raises(ValueError, match="reviewed_rule_conflicts_with_base"):
         build_offline_bundle(rules, tmp_path / "conflict.gtrules", "1.2.21", "0.08.17", base_manifest=base_path)
     assert not (tmp_path / "conflict.gtrules").exists()
+
+def test_gta_three_control_rule_replaces_only_exact_base_entry(tmp_path):
+    reviewed = Path(__file__).resolve().parents[1] / "release-review" / "gta-three-controls-v1.2.24-rule.json"
+    rule = json.loads(reviewed.read_text(encoding="utf-8"))[0]
+    previous = {
+        **rule,
+        "supported_settings": rule["supported_settings"][:-3],
+        "supported_values": {key: rule["supported_values"][key] for key in rule["supported_settings"][:-3]},
+    }
+    other = {
+        "game": "Other Game", "platform": "Steam", "version": "1.0", "fingerprint": "known",
+        "status": "read_verified", "config_patterns": [], "supported_settings": [],
+        "reader_id": "existing-parser", "writer_id": None,
+    }
+    base_path = tmp_path / "verified-games.json"
+    base_raw = json.dumps({
+        "format_version": 1, "manifest_version": "1.2.23",
+        "minimum_client_version": "0.08.20", "games": [previous, other],
+    }).encode("utf-8")
+    base_path.write_bytes(base_raw)
+    base_path.with_name(base_path.name + ".sha256").write_text(
+        hashlib.sha256(base_raw).hexdigest(), encoding="ascii",
+    )
+
+    build_release(reviewed, tmp_path / "release", "1.2.24", "0.08.21", base_path, replace_base_rule=True)
+
+    result = json.loads((tmp_path / "release" / "verified-games.json").read_text(encoding="utf-8"))
+    assert result["games"] == [rule, other]
+    assert result["minimum_client_version"] == "0.08.21"
+    assert rule["status"] == "write_candidate"
+    assert set(rule["supported_values"]) == set(rule["supported_settings"])
+    assert rule["supported_settings"][-3:] == ["upscaling", "upscaling_mode", "quick_preset"]
+    assert len(rule["supported_values"]["quick_preset"]) == 6
 
 def test_forza_replacement_requires_exact_rule_and_preserves_other_games(tmp_path):
     existing = {

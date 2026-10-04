@@ -340,6 +340,206 @@ def test_gta_reviewed_display_options_and_writer_guards():
         _write_gta_enhanced_xml(original, {"screen_mode": "Windowed"})
 
 
+def test_gta_upscaling_options_and_writer_guard_sampling_source():
+    from config_manager.settings_parser import _parse_gta_enhanced_xml
+    from config_manager.settings_writer import _write_gta_enhanced_xml
+
+    game = "Grand Theft Auto V Enhanced"
+    assert setting_options_for_game(game, "upscaling")[1:] == ["Off", "Sampling", "FSR 1", "FSR 3"]
+    assert setting_options_for_game(game, "upscaling_mode", upscaling_method="Sampling")[1:] == [
+        "1/2", "2/3", "3/4", "5/6", "5/4", "3/2", "7/4", "2/1", "5/2",
+    ]
+    assert setting_options_for_game(game, "upscaling_mode", upscaling_method="FSR 1")[1:] == [
+        "Quality", "Performance",
+    ]
+    assert setting_options_for_game(game, "upscaling_mode", upscaling_method="FSR 3")[1:] == [
+        "Performance", "Balanced", "Quality", "Native AA",
+    ]
+    assert setting_options_for_game(game, "quick_preset")[1:] == [
+        "Lowest", "High", "High with Ray Tracing", "Very High",
+        "Very High with Ray Tracing", "Maximum with Ray Tracing",
+    ]
+    original = (
+        '<Settings><video/><graphics><ResScalingType value="1"/><SamplingMode value="8"/>'
+        '<fsrQuality value="2"/><fsr3Quality value="2"/><FrameGenType value="0"/>'
+        '</graphics><Presets><PresetLevel value="2"/></Presets></Settings>'
+    )
+    parsed = _parse_gta_enhanced_xml(original)
+    assert (parsed["upscaling"], parsed["upscaling_mode"], parsed["quick_preset"]) == (
+        "Sampling", "5/2", "High",
+    )
+    fsr3 = _write_gta_enhanced_xml(original, {"upscaling": "FSR 3"})
+    assert _parse_gta_enhanced_xml(fsr3)["upscaling"] == "FSR 3"
+    quality = _write_gta_enhanced_xml(fsr3, {"upscaling_mode": "Balanced"})
+    assert _parse_gta_enhanced_xml(quality)["upscaling_mode"] == "Balanced"
+    with pytest.raises(ValueError, match="requires frame generation Off"):
+        _write_gta_enhanced_xml(
+            fsr3.replace('<FrameGenType value="0"/>', '<FrameGenType value="2"/>'),
+            {"upscaling": "Sampling"},
+        )
+    with pytest.raises(ValueError):
+        _write_gta_enhanced_xml(original, {"upscaling_mode": "Native AA"})
+    with pytest.raises(ValueError):
+        _write_gta_enhanced_xml(original, {"quick_preset": "High"})
+
+
+@pytest.mark.parametrize("source_preset,target_preset", [
+    (source, target)
+    for source in (
+        "Lowest", "High", "High with Ray Tracing", "Very High",
+        "Very High with Ray Tracing", "Maximum with Ray Tracing",
+    )
+    for target in (
+        "Lowest", "High", "High with Ray Tracing", "Very High",
+        "Very High with Ray Tracing", "Maximum with Ray Tracing",
+    )
+    if source != target
+])
+def test_gta_quick_preset_writes_complete_known_signature(tmp_path, source_preset, target_preset):
+    from config_manager.package import ConfigPackage
+    from config_manager.settings_parser import extract_key_settings
+    from config_manager.settings_writer import (
+        GTA_ENHANCED_PRESET_FIELDS, GTA_ENHANCED_PRESET_ORDER, _write_gta_enhanced_xml, write_settings,
+    )
+
+    source_index = GTA_ENHANCED_PRESET_ORDER.index(source_preset)
+    target_index = GTA_ENHANCED_PRESET_ORDER.index(target_preset)
+    root = ET.Element("Settings")
+    video = ET.SubElement(root, "video")
+    ET.SubElement(video, "VSync", value="1")
+    graphics = ET.SubElement(root, "graphics")
+    ET.SubElement(graphics, "ResScalingType", value="1")
+    ET.SubElement(graphics, "SamplingMode", value="8")
+    ET.SubElement(graphics, "FrameGenType", value="0")
+    presets = ET.SubElement(root, "Presets")
+    for (section, tag, attribute), values in GTA_ENHANCED_PRESET_FIELDS.items():
+        parent = graphics if section == "graphics" else presets
+        node = parent.find(tag)
+        if node is None:
+            node = ET.SubElement(parent, tag)
+        node.set(attribute, values[source_index])
+    source = ET.tostring(root, encoding="unicode")
+
+    changed = ET.fromstring(_write_gta_enhanced_xml(source, {"quick_preset": target_preset}))
+    for (section, tag, attribute), values in GTA_ENHANCED_PRESET_FIELDS.items():
+        assert changed.find(f"./{section}/{tag}").get(attribute) == values[target_index]
+    assert changed.find("./video/VSync").get("value") == "1"
+    assert changed.find("./graphics/ResScalingType").get("value") == "1"
+    assert changed.find("./graphics/SamplingMode").get("value") == "8"
+    with pytest.raises(ValueError, match="Unsupported GTA V Enhanced source preset"):
+        _write_gta_enhanced_xml(source.replace(f'PresetLevel value="{source_index + 1}"',
+                                               'PresetLevel value="0"'),
+                                {"quick_preset": target_preset})
+    with pytest.raises(ValueError, match="Unsupported GTA V Enhanced source preset"):
+        _write_gta_enhanced_xml(source.replace(
+            f'Tessellation value="{GTA_ENHANCED_PRESET_FIELDS[("graphics", "Tessellation", "value")][source_index]}"',
+            'Tessellation value="99"'), {"quick_preset": target_preset})
+    with pytest.raises(ValueError, match="requires observed Sampling 5/2"):
+        _write_gta_enhanced_xml(source.replace('SamplingMode value="8"', 'SamplingMode value="0"'),
+                                {"quick_preset": target_preset})
+
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    config_path.write_bytes(source.encode("utf-8"))
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": source}]
+    package_path = tmp_path / "independent-baseline.json"
+    package_path.write_text(json.dumps({
+        "version": 2, "games": {game: {"config_files": config_files}},
+    }), encoding="utf-8")
+    registry = VerificationRegistry("0.08.21", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    rule = {
+        "game": game, "platform": "Steam", "version": "1.0.1158.16",
+        "fingerprint": game_structural_fingerprint(game, config_files),
+        "writer_id": "gta-enhanced-xml-writer", "supported_settings": ["quick_preset"],
+        "supported_values": {"quick_preset": [target_preset]},
+    }
+    registry.status_for = lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": rule}
+
+    assert preflight_write(game, "Steam", "1.0.1158.16", config_files,
+                           {"quick_preset": target_preset}, registry)["status"] == "ok"
+    applied = backup_and_write(game, "Steam", "1.0.1158.16", config_files,
+                               {"quick_preset": target_preset}, write_settings, registry)
+    assert len(applied) == 1 and applied[0]["status"] == "ok"
+    updated = config_path.read_bytes()
+    assert extract_key_settings(game, [{**config_files[0], "content": updated.decode("utf-8")}])["quick_preset"] == target_preset
+    assert (registry.data_dir / "backups" / game.replace(" ", "_") / "0-settings.xml").read_bytes() == source.encode("utf-8")
+    assert ConfigPackage().import_package(str(package_path))[game] == [str(config_path)]
+    assert config_path.read_bytes() == source.encode("utf-8")
+
+    unknown = source.replace(
+        f'Tessellation value="{GTA_ENHANCED_PRESET_FIELDS[("graphics", "Tessellation", "value")][source_index]}"',
+        'Tessellation value="99"')
+    config_path.write_bytes(unknown.encode("utf-8"))
+    with pytest.raises(VerificationError, match="write_preflight_failed:gta_xml"):
+        preflight_write(game, "Steam", "1.0.1158.16",
+                        [{**config_files[0], "content": unknown}],
+                        {"quick_preset": target_preset}, registry)
+    assert config_path.read_bytes() == unknown.encode("utf-8")
+    assert ConfigPackage().import_package(str(package_path))[game] == [str(config_path)]
+    assert config_path.read_bytes() == source.encode("utf-8")
+
+
+@pytest.mark.parametrize("key,value,method", [
+    *(("upscaling", value, None) for value in ("Off", "Sampling", "FSR 1", "FSR 3")),
+    *(("upscaling_mode", value, "1") for value in (
+        "1/2", "2/3", "3/4", "5/6", "5/4", "3/2", "7/4", "2/1", "5/2",
+    )),
+    *(("upscaling_mode", value, "2") for value in ("Quality", "Performance")),
+    *(("upscaling_mode", value, "3") for value in (
+        "Performance", "Balanced", "Quality", "Native AA",
+    )),
+])
+def test_gta_upscaling_write_matrix_restores_baseline(tmp_path, key, value, method):
+    from config_manager.package import ConfigPackage
+    from config_manager.settings_parser import extract_key_settings
+    from config_manager.settings_writer import GTA_ENHANCED_SCALING_MODES, write_settings
+
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    initial_method = method or ("3" if value == "Sampling" else "1")
+    stored = {"SamplingMode": "8", "fsrQuality": "2", "fsr3Quality": "2"}
+    if method:
+        mode_tag, codes = GTA_ENHANCED_SCALING_MODES[method]
+        stored[mode_tag] = next(code for code in codes.values() if code != codes[value])
+    content = (
+        '<Settings><video/><graphics>'
+        f'<ResScalingType value="{initial_method}"/>'
+        + "".join(f'<{tag} value="{stored[tag]}"/>' for tag in ("SamplingMode", "fsrQuality", "fsr3Quality"))
+        + '<FrameGenType value="0"/></graphics><Presets><PresetLevel value="2"/></Presets></Settings>'
+    )
+    baseline = content.encode("utf-8")
+    config_path.write_bytes(baseline)
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    package_path = tmp_path / "independent-baseline.json"
+    package_path.write_text(json.dumps({
+        "version": 2, "games": {game: {"config_files": config_files}},
+    }), encoding="utf-8")
+    registry = VerificationRegistry("0.08.21", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    rule = {
+        "game": game, "platform": "Steam", "version": "1.0.1158.16",
+        "fingerprint": game_structural_fingerprint(game, config_files),
+        "writer_id": "gta-enhanced-xml-writer", "supported_settings": [key],
+        "supported_values": {key: [value]},
+    }
+    registry.status_for = lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": rule}
+
+    assert preflight_write(game, "Steam", "1.0.1158.16", config_files, {key: value}, registry)["status"] == "ok"
+    result = backup_and_write(game, "Steam", "1.0.1158.16", config_files, {key: value}, write_settings, registry)
+    assert len(result) == 1 and result[0]["status"] == "ok"
+    updated = config_path.read_bytes()
+    assert updated != baseline
+    assert extract_key_settings(game, [{**config_files[0], "content": updated.decode("utf-8")}])[key] == value
+    assert (registry.data_dir / "backups" / game.replace(" ", "_") / "0-settings.xml").read_bytes() == baseline
+    assert ConfigPackage().import_package(str(package_path))[game] == [str(config_path)]
+    assert config_path.read_bytes() == baseline
+    with pytest.raises(VerificationError, match="write_setting_not_allowed:quick_preset"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {"quick_preset": "High"}, registry)
+
+
 @pytest.mark.parametrize("key,value,initial_width,initial_height,initial_mode", [
     ("resolution", "1600x900", "1920", "1080", "2"),
     ("resolution", "1920x1080", "1600", "900", "2"),
