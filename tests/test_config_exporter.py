@@ -252,6 +252,40 @@ class TestGtaEnhancedParser:
         with pytest.raises(ValueError):
             _write_gta_enhanced_xml(content, {"frame_limit": "144 FPS"})
 
+    @pytest.mark.parametrize("starting, target, code", [
+        ("0", "AMD FSR 3", "2"), ("2", "Off", "0"),
+    ])
+    def test_gta_frame_generation_requires_normalized_sampling(self, starting, target, code):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = (
+            '<Settings><video/><graphics><ResScalingType value="3"/><SamplingMode value="0"/>'
+            '<fsr3Quality value="2"/><fsr3FrameGenMode value="1"/>'
+            f'<FrameGenType value="{starting}"/></graphics></Settings>'
+        )
+
+        patched = _write_gta_enhanced_xml(content, {"frame_generation": target})
+        assert patched == content.replace(f'FrameGenType value="{starting}"', f'FrameGenType value="{code}"')
+        assert _write_gta_enhanced_xml(patched, {"frame_generation": "Off" if starting == "0" else "AMD FSR 3"}) == content
+
+        for sampling in ('<SamplingMode value="1"/>', '<SamplingMode value="8"/>', ''):
+            with pytest.raises(ValueError, match="inactive Sampling 1/2"):
+                _write_gta_enhanced_xml(content.replace('<SamplingMode value="0"/>', sampling), {"frame_generation": target})
+
+    @pytest.mark.parametrize("field, value", [
+        ("ResScalingType", "2"), ("fsr3Quality", "1"), ("fsr3FrameGenMode", "0"),
+    ])
+    def test_gta_frame_generation_rejects_wrong_parent(self, field, value):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = (
+            '<Settings><video/><graphics><ResScalingType value="3"/><SamplingMode value="0"/>'
+            '<fsr3Quality value="2"/><fsr3FrameGenMode value="1"/>'
+            '<FrameGenType value="0"/></graphics></Settings>'
+        )
+        with pytest.raises(ValueError, match="requires FSR 3 Quality"):
+            _write_gta_enhanced_xml(content.replace(f'<{field} value="{3 if field == "ResScalingType" else 2 if field == "fsr3Quality" else 1}"/>', f'<{field} value="{value}"/>'), {"frame_generation": "AMD FSR 3"})
+
     def test_reads_video_values_and_saved_scaling_off(self):
         from config_manager.settings_parser import extract_key_settings
 

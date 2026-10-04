@@ -671,6 +671,7 @@ def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
 GTA_ENHANCED_WRITE_CODES = {
     VSYNC: {"Off": "0", "On": "1"},
     FRAME_LIMIT: {"Unlimited": "0", **{f"{fps} FPS": str(fps) for fps in (30, 40, 45, 60, 72, 75, 90, 105, 120)}},
+    FRAME_GENERATION: {"Off": "0", "AMD FSR 3": "2"},
 }
 
 
@@ -684,10 +685,24 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
     if root.tag != "Settings":
         raise ValueError("Unexpected GTA V Enhanced XML root")
 
-    for key, tag in ((VSYNC, "VSync"), (FRAME_LIMIT, "FrameLimit")):
+    if FRAME_GENERATION in settings:
+        scaling = root.find("./graphics/ResScalingType")
+        quality = root.find("./graphics/fsr3Quality")
+        frame_gen_mode = root.find("./graphics/fsr3FrameGenMode")
+        sampling = root.find("./graphics/SamplingMode")
+        if (
+            set(settings) != {FRAME_GENERATION}
+            or scaling is None or scaling.get("value") != "3"
+            or quality is None or quality.get("value") != "2"
+            or frame_gen_mode is None or frame_gen_mode.get("value") != "1"
+            or sampling is None or sampling.get("value") != "0"
+        ):
+            raise ValueError("GTA V Enhanced frame generation requires FSR 3 Quality and inactive Sampling 1/2")
+
+    for key, parent, tag in ((VSYNC, "video", "VSync"), (FRAME_LIMIT, "video", "FrameLimit"), (FRAME_GENERATION, "graphics", "FrameGenType")):
         if key not in settings:
             continue
-        node = root.find(f"./video/{tag}")
+        node = root.find(f"./{parent}/{tag}")
         if node is None or len(root.findall(f".//{tag}")) != 1:
             raise ValueError(f"Missing or ambiguous GTA V Enhanced {tag} node")
         if node.get("value") not in GTA_ENHANCED_WRITE_CODES[key].values():
