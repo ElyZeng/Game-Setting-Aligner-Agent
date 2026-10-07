@@ -28,6 +28,22 @@ def test_write_candidate_controls_follow_supported_settings():
     assert gui_app._verification_allows_setting({"status": "read_verified"}, "vsync") is False
 
 
+def test_gta_fg_gui_options_match_guarded_rule():
+    verification = {
+        "status": "write_candidate",
+        "rule": {
+            "supported_settings": ["vsync", "frame_limit", "frame_generation"],
+            "supported_values": {"frame_generation": ["AMD FSR 3", "Off"]},
+        },
+    }
+
+    assert gui_app._verification_allows_setting(verification, "frame_generation")
+    assert gui_app.setting_options_for_game(
+        "Grand Theft Auto V Enhanced", "frame_generation", "Off", upscaling_method="FSR 3"
+    )[1:] == ["Off", "AMD FSR 3"]
+    assert gui_app.setting_options_for_game("Other Game", "frame_generation")[1:] == ["Off", "On"]
+
+
 class FakeWikiClient:
     def __init__(self, states):
         self.states = dict(states)

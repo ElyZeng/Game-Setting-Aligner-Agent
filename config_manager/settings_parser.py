@@ -334,6 +334,8 @@ def setting_options_for_game(
     upscaling_method: Optional[str] = None,
 ) -> List[str]:
     name = game_name.casefold()
+    if "grand theft auto v enhanced" in name and key == FRAME_GENERATION:
+        return ["—", "Off", "AMD FSR 3"]
     if "black myth" in name or "wukong" in name:
         if key == DYNAMIC_RESOLUTION:
             return ["—"]
@@ -985,7 +987,7 @@ def _parse_gta_enhanced_xml(content: str) -> Dict[str, Optional[str]]:
 
     frame_limit = video.find("FrameLimit")
     if frame_limit is not None:
-        result[FRAME_LIMIT] = {"0": "Unlimited", "60": "60 FPS"}.get(frame_limit.get("value"))
+        result[FRAME_LIMIT] = {"0": "Unlimited", "30": "30 FPS", "40": "40 FPS", "45": "45 FPS", "60": "60 FPS", "72": "72 FPS", "75": "75 FPS", "90": "90 FPS", "105": "105 FPS", "120": "120 FPS"}.get(frame_limit.get("value"))
 
     scaling = root.find("./graphics/ResScalingType")
     if scaling is not None and scaling.get("value") == "0":

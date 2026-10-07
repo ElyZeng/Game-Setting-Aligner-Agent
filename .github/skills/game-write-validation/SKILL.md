@@ -16,7 +16,7 @@ Do not perform real writes until all are true:
 
 1. `game-read-validation` is complete for the exact retail game/version/platform.
 2. Parser mappings and option dependencies are backed by in-game samples and focused tests.
-3. The game and launcher are fully closed and cloud sync is paused.
+3. The game and non-Steam launchers are fully closed and cloud sync is paused. An open Steam client is a warning, not a blocker, when the tester confirms its cloud sync remains paused.
 4. The exact version and structural fingerprint match a `write_candidate: verified` or `write_verified: verified` rule.
 5. The rule allowlist contains only settings approved for this test.
 6. The tester explicitly confirms real-file testing may begin.
@@ -86,7 +86,7 @@ Stop the entire matrix immediately when:
 
 - baseline import or hash restoration fails;
 - an unrelated file changes;
-- the game or launcher starts;
+- the game or a non-Steam launcher starts; an open Steam client alone is a warning, but resumed cloud sync is a stop condition;
 - cloud sync resumes;
 - the fingerprint or game version changes;
 - private config content would need to be exposed publicly.

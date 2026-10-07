@@ -132,7 +132,10 @@ class ConfigPackage:
                     continue
                 try:
                     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-                    with open(path, "w", encoding="utf-8") as fh:
+                    with open(
+                        path, "w", encoding="utf-8",
+                        newline="" if "grand theft auto v enhanced" in game_name.casefold() else None,
+                    ) as fh:
                         fh.write(content)
                     restored_paths.append(path)
                     sidecar = self._forza_fullscreen_sidecar(path, content)

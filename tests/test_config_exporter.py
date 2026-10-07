@@ -216,6 +216,282 @@ class TestGtaEnhancedParser:
         assert result[0]["status"] == "skipped"
         assert config_path.read_text(encoding="utf-8") == content
 
+    def test_gta_offline_vsync_patch_preserves_other_xml(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = '<Settings><video><VSync value="1"/><FrameLimit value="120"/></video></Settings>'
+
+        result = _write_gta_enhanced_xml(content, {"vsync": "Off"})
+
+        assert result == content.replace('<VSync value="1"/>', '<VSync value="0"/>')
+
+    def test_gta_offline_vsync_patch_rejects_unpatchable_xml(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = "<Settings><video><VSync value='1'/></video></Settings>"
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(content, {"vsync": "Off"})
+
+    @pytest.mark.parametrize("fps", ["Unlimited", "30 FPS", "40 FPS", "45 FPS", "60 FPS", "72 FPS", "75 FPS", "90 FPS", "105 FPS", "120 FPS"])
+    def test_gta_offline_frame_limit_patch_uses_only_observed_codes(self, fps):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = '<Settings><video><VSync value="1"/><FrameLimit value="0"/></video></Settings>'
+        code = "0" if fps == "Unlimited" else fps.removesuffix(" FPS")
+
+        result = _write_gta_enhanced_xml(content, {"frame_limit": fps})
+
+        assert result == content.replace('<FrameLimit value="0"/>', f'<FrameLimit value="{code}"/>')
+
+    def test_gta_offline_patch_rejects_unknown_frame_limit(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = '<Settings><video><FrameLimit value="0"/></video></Settings>'
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(content, {"frame_limit": "144 FPS"})
+
+    @pytest.mark.parametrize("starting, target", [
+        ("1920x1080", "1600x900"), ("1600x900", "1920x1080"),
+    ])
+    def test_gta_offline_resolution_patch_preserves_other_xml(self, starting, target):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        old_width, old_height = starting.split("x")
+        new_width, new_height = target.split("x")
+        content = (
+            f'<Settings><video><ScreenWidth value="{old_width}"/>'
+            f'<ScreenHeight value="{old_height}"/><Windowed value="2"/><VSync value="1"/>'
+            '<FrameLimit value="120"/></video><graphics mode="keep"/></Settings>'
+        )
+
+        patched = _write_gta_enhanced_xml(content, {"resolution": target})
+
+        assert patched == content.replace(
+            f'ScreenWidth value="{old_width}"', f'ScreenWidth value="{new_width}"'
+        ).replace(f'ScreenHeight value="{old_height}"', f'ScreenHeight value="{new_height}"')
+        assert _write_gta_enhanced_xml(patched, {"resolution": starting}) == content
+
+    @pytest.mark.parametrize("content, target", [
+        ('<Settings><video><ScreenWidth value="1920"/><ScreenHeight value="1080"/></video></Settings>', "2560x1440"),
+        ('<Settings><video><ScreenWidth value="1920"/></video></Settings>', "1600x900"),
+        ('<Settings><video><ScreenWidth value="2560"/><ScreenHeight value="1440"/></video></Settings>', "1600x900"),
+    ])
+    def test_gta_offline_resolution_patch_rejects_unobserved_or_incomplete_xml(self, content, target):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(content, {"resolution": target})
+
+    def test_gta_offline_resolution_rejects_unobserved_screen_mode(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = (
+            '<Settings><video><ScreenWidth value="1920"/><ScreenHeight value="1080"/>'
+            '<Windowed value="3"/></video></Settings>'
+        )
+        with pytest.raises(ValueError, match="requires Borderless Windowed"):
+            _write_gta_enhanced_xml(content, {"resolution": "1600x900"})
+
+    @pytest.mark.parametrize("mode, code", [
+        ("Fullscreen", "0"), ("Borderless Fullscreen", "3"),
+    ])
+    def test_gta_offline_screen_mode_patch_preserves_resolution(self, mode, code):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = (
+            '<Settings><video><Windowed value="2"/><ScreenWidth value="1920"/>'
+            '<ScreenHeight value="1080"/></video></Settings>'
+        )
+
+        patched = _write_gta_enhanced_xml(content, {"screen_mode": mode})
+
+        assert patched == content.replace('Windowed value="2"', f'Windowed value="{code}"')
+        assert _write_gta_enhanced_xml(patched, {"screen_mode": "Borderless Windowed"}) == content
+
+    @pytest.mark.parametrize("content, target", [
+        ('<Settings><video><Windowed value="2"/></video></Settings>', "Unknown"),
+        ('<Settings><video><Windowed value="2"/></video></Settings>', "Windowed"),
+        ('<Settings><video><VSync value="1"/></video></Settings>', "Fullscreen"),
+        ('<Settings><video><Windowed value="4"/></video></Settings>', "Fullscreen"),
+    ])
+    def test_gta_offline_screen_mode_patch_rejects_unobserved_or_incomplete_xml(self, content, target):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(content, {"screen_mode": target})
+
+    def test_gta_offline_screen_mode_rejects_unobserved_resolution(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = (
+            '<Settings><video><ScreenWidth value="1600"/><ScreenHeight value="900"/>'
+            '<Windowed value="2"/></video></Settings>'
+        )
+        with pytest.raises(ValueError, match="requires 1920x1080"):
+            _write_gta_enhanced_xml(content, {"screen_mode": "Fullscreen"})
+
+    @pytest.mark.parametrize("mode, code", [
+        ("Performance", "0"), ("Balanced", "1"), ("Native AA", "3"),
+    ])
+    def test_gta_offline_fsr3_quality_patch_preserves_other_xml(self, mode, code):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = (
+            '<Settings><video/><graphics><ResScalingType value="3"/>'
+            '<fsr3Quality value="2"/><FrameGenType value="0"/></graphics></Settings>'
+        )
+
+        patched = _write_gta_enhanced_xml(content, {"upscaling_mode": mode})
+
+        assert patched == content.replace('fsr3Quality value="2"', f'fsr3Quality value="{code}"')
+        assert _write_gta_enhanced_xml(patched, {"upscaling_mode": "Quality"}) == content
+
+    @pytest.mark.parametrize("scaling, quality, target", [
+        ("2", "2", "Balanced"), ("3", "2", "Ultra Performance"),
+        ("3", "9", "Balanced"),
+    ])
+    def test_gta_offline_fsr3_quality_patch_rejects_wrong_parent_or_code(self, scaling, quality, target):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        content = (
+            '<Settings><video/><graphics>'
+            f'<ResScalingType value="{scaling}"/><fsr3Quality value="{quality}"/>'
+            '</graphics></Settings>'
+        )
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(content, {"upscaling_mode": target})
+
+    def test_gta_offline_fsr3_quality_rejects_enabled_frame_generation(self):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        original = (
+            '<Settings><video/><graphics><ResScalingType value="3"/>'
+            '<fsr3Quality value="2"/><FrameGenType value="2"/></graphics></Settings>'
+        )
+        with pytest.raises(ValueError, match="frame generation Off"):
+            _write_gta_enhanced_xml(original, {"upscaling_mode": "Balanced"})
+
+    @pytest.mark.parametrize("label, code", [
+        ("1/2", "0"), ("2/3", "1"), ("3/4", "2"), ("5/6", "3"), ("5/4", "4"),
+        ("3/2", "5"), ("7/4", "6"), ("2/1", "7"), ("5/2", "8"),
+    ])
+    def test_gta_offline_sampling_scale_patch_uses_saved_codes(self, label, code):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        starting = "8" if code == "0" else "0"
+        original = (
+            '<Settings><video/><graphics><ResScalingType value="1"/>'
+            f'<SamplingMode value="{starting}"/><fsrQuality value="2"/>'
+            '</graphics></Settings>'
+        )
+
+        patched = _write_gta_enhanced_xml(original, {"upscaling_mode": label})
+
+        assert patched == original.replace(f'SamplingMode value="{starting}"', f'SamplingMode value="{code}"')
+        assert _write_gta_enhanced_xml(patched, {"upscaling_mode": "5/2" if code == "0" else "1/2"}) == original
+
+    @pytest.mark.parametrize("starting, target, code", [
+        ("2", "Performance", "4"), ("4", "Quality", "2"),
+    ])
+    def test_gta_offline_fsr1_quality_patch_uses_distinct_codes(self, starting, target, code):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        original = (
+            '<Settings><video/><graphics><ResScalingType value="2"/>'
+            f'<fsrQuality value="{starting}"/><fsr3Quality value="2"/>'
+            '</graphics></Settings>'
+        )
+
+        patched = _write_gta_enhanced_xml(original, {"upscaling_mode": target})
+
+        assert patched == original.replace(f'fsrQuality value="{starting}"', f'fsrQuality value="{code}"')
+        assert _write_gta_enhanced_xml(patched, {"upscaling_mode": "Quality" if starting == "2" else "Performance"}) == original
+
+    @pytest.mark.parametrize("starting, target, code", [
+        ("0", "AMD FSR 3", "2"), ("2", "Off", "0"),
+    ])
+    def test_gta_offline_fsr3_quality_frame_generation_patch(self, starting, target, code):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        original = (
+            '<Settings><video/><graphics><ResScalingType value="3"/>'
+            '<SamplingMode value="0"/>'
+            '<fsr3Quality value="2"/><fsr3FrameGenMode value="1"/>'
+            f'<FrameGenType value="{starting}"/></graphics></Settings>'
+        )
+
+        patched = _write_gta_enhanced_xml(original, {"frame_generation": target})
+
+        assert patched == original.replace(f'FrameGenType value="{starting}"', f'FrameGenType value="{code}"')
+        assert _write_gta_enhanced_xml(patched, {"frame_generation": "Off" if starting == "0" else "AMD FSR 3"}) == original
+
+    @pytest.mark.parametrize("sampling_code", ["8", "1", None])
+    @pytest.mark.parametrize("starting, target", [("0", "AMD FSR 3"), ("2", "Off")])
+    def test_gta_frame_generation_rejects_unnormalized_sampling(self, sampling_code, starting, target):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        sampling = f'<SamplingMode value="{sampling_code}"/>' if sampling_code is not None else ''
+        original = (
+            '<Settings><video/><graphics><ResScalingType value="3"/>'
+            f'{sampling}<fsr3Quality value="2"/><fsr3FrameGenMode value="1"/>'
+            f'<FrameGenType value="{starting}"/></graphics></Settings>'
+        )
+
+        with pytest.raises(ValueError, match="inactive Sampling 1/2"):
+            _write_gta_enhanced_xml(original, {"frame_generation": target})
+
+    @pytest.mark.parametrize("method, quality, frame_gen_mode", [
+        ("2", "2", "1"), ("3", "1", "1"), ("3", "2", "0"),
+    ])
+    def test_gta_offline_frame_generation_rejects_unsampled_dependency(self, method, quality, frame_gen_mode):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        original = (
+            '<Settings><video/><graphics>'
+            f'<ResScalingType value="{method}"/><fsr3Quality value="{quality}"/>'
+            f'<fsr3FrameGenMode value="{frame_gen_mode}"/><FrameGenType value="0"/>'
+            '</graphics></Settings>'
+        )
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(original, {"frame_generation": "AMD FSR 3"})
+
+    @pytest.mark.parametrize("method, code", [
+        ("Off", "0"), ("Sampling", "1"), ("FSR 1", "2"),
+    ])
+    def test_gta_offline_scaling_method_patch_preserves_dependent_fields(self, method, code):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        original = (
+            '<Settings><video/><graphics><ResScalingType value="3"/>'
+            '<SamplingMode value="0"/><fsrQuality value="2"/>'
+            '<fsr3Quality value="2"/><FrameGenType value="0"/></graphics></Settings>'
+        )
+
+        patched = _write_gta_enhanced_xml(original, {"upscaling": method})
+
+        assert patched == original.replace('ResScalingType value="3"', f'ResScalingType value="{code}"')
+        assert _write_gta_enhanced_xml(patched, {"upscaling": "FSR 3"}) == original
+
+    @pytest.mark.parametrize("frame_gen, fsr_quality, fsr3_quality, method", [
+        ("2", "2", "2", "Off"), ("0", "9", "2", "FSR 1"),
+        ("0", "2", "9", "Off"), ("0", "2", "2", "Unknown"),
+    ])
+    def test_gta_offline_scaling_method_patch_rejects_unobserved_state(self, frame_gen, fsr_quality, fsr3_quality, method):
+        from config_manager.settings_writer import _write_gta_enhanced_xml
+
+        original = (
+            '<Settings><video/><graphics><ResScalingType value="3"/>'
+            f'<fsrQuality value="{fsr_quality}"/><fsr3Quality value="{fsr3_quality}"/>'
+            f'<FrameGenType value="{frame_gen}"/></graphics></Settings>'
+        )
+
+        with pytest.raises(ValueError):
+            _write_gta_enhanced_xml(original, {"upscaling": method})
+
     def test_reads_video_values_and_saved_scaling_off(self):
         from config_manager.settings_parser import extract_key_settings
 
@@ -422,6 +698,94 @@ class TestGtaEnhancedParser:
         assert result["screen_mode"] == "Borderless Fullscreen"
         assert result["vsync"] == "On"
         assert result["quick_preset"] == "High"
+
+    def test_reads_saved_30_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="30"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "30 FPS"
+
+    def test_reads_saved_40_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="40"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "40 FPS"
+
+    def test_reads_saved_45_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="45"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "45 FPS"
+
+    def test_reads_saved_72_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="72"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "72 FPS"
+
+    def test_reads_saved_75_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="75"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "75 FPS"
+
+    def test_reads_saved_90_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="90"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "90 FPS"
+
+    def test_reads_saved_105_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="105"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "105 FPS"
+
+    def test_reads_saved_120_fps_limit(self):
+        from config_manager.settings_parser import extract_key_settings
+
+        content = '<Settings><video><FrameLimit value="120"/></video></Settings>'
+        result = extract_key_settings(
+            "Grand Theft Auto V Enhanced",
+            [{"found": True, "content": content, "expanded_path": "settings.xml"}],
+        )
+
+        assert result["frame_limit"] == "120 FPS"
 
     def test_reads_saved_fsr3_quality_without_stale_frame_generation(self):
         from config_manager.settings_parser import extract_key_settings
@@ -1049,6 +1413,51 @@ class TestForzaWriter:
         assert '<option id="CarLOD" value="2" />' in result
         assert '<option id="GeometryQuality" value="3" />' in result
         assert '<option id="ShadowQuality" value="2" />' in result
+
+    @pytest.mark.parametrize(
+        ("preset", "car_lod", "focus_lod", "reflection_lod", "mirror_resolution", "main_scene", "low_quality_ai"),
+        [
+            ("Very Low", "0", "VeryLow", "VeryLow", "160", "70.000000", "1"),
+            ("Low", "0", "VeryLow", "Low", "160", "120.000000", "1"),
+            ("Medium", "1", "Low", "Medium", "160", "180.000000", "0"),
+            ("High", "2", "High", "High", "320", "200.000000", "0"),
+            ("Ultra", "3", "Ultra", "High", "320", "200.000000", "0"),
+            ("Extreme", "4", "Ultra", "Ultra", "320", "200.000000", "0"),
+        ],
+    )
+    def test_forza_version52_preset_updates_coupled_graphics(
+        self, preset, car_lod, focus_lod, reflection_lod, mirror_resolution, main_scene, low_quality_ai
+    ):
+        import xml.etree.ElementTree as ET
+        from config_manager.settings_writer import _write_forza_xml
+
+        content = (
+            '<UserConfig Version="52"><selections><option id="CarLOD" value="2" />'
+            '</selections><graphics><CarFocusLODMinMax dynamicValue="High" />'
+            '<CarReflectionLOD dynamicValue="High" /><MirrorResolution value="320" />'
+            '<ScreenAreaTestsMain MainScene="200.000000" />'
+            '<UseLowQualityAIDrivers value="0" /></graphics></UserConfig>'
+        )
+        root = ET.fromstring(_write_forza_xml(content, {"quick_preset": preset}))
+
+        assert root.find('./selections/option').get('value') == car_lod
+        assert root.find('.//CarFocusLODMinMax').get('dynamicValue') == focus_lod
+        assert root.find('.//CarReflectionLOD').get('dynamicValue') == reflection_lod
+        assert root.find('.//MirrorResolution').get('value') == mirror_resolution
+        assert root.find('.//ScreenAreaTestsMain').get('MainScene') == main_scene
+        assert root.find('.//UseLowQualityAIDrivers').get('value') == low_quality_ai
+
+    def test_forza_rejects_unknown_preset(self):
+        from config_manager.settings_writer import _write_forza_xml
+
+        with pytest.raises(ValueError, match="Unsupported Forza preset"):
+            _write_forza_xml('<UserConfig Version="52" />', {"quick_preset": "Custom"})
+
+    def test_forza_older_xml_does_not_patch_version52_coupled_field(self):
+        from config_manager.settings_writer import _write_forza_xml
+
+        content = '<UserConfig Version="51"><CarFocusLODMinMax dynamicValue="High" /></UserConfig>'
+        assert _write_forza_xml(content, {"quick_preset": "Low"}) == content
 
     def test_forza_reads_xess_quality_names(self):
         from config_manager.settings_parser import extract_key_settings

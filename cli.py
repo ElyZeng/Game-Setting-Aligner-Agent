@@ -7,9 +7,11 @@ scan        Detect installed games across Steam, Epic, GOG.
 query       Query PCGamingWiki for a game's config file paths.
 detect      Detect and read local config files for a game.
 parse       Parse key graphics settings from config files.
+preflight   Check a GTA V Enhanced write in memory without modifying game files.
 apply       Write new graphics settings to a game's config files.
 export      Export selected games' configs to a JSON package.
 import      Import (restore) configs from a JSON package.
+restore-baseline  Validate a no-change GTA baseline import under an exact rule.
 """
 
 from __future__ import annotations
@@ -163,6 +165,33 @@ def cmd_apply(args):
     _json_out(results)
 
 
+def cmd_preflight(args):
+    from config_manager import VerificationError, VerificationRegistry, detect_game_version, preflight_write
+
+    try:
+        settings = json.loads(args.settings)
+        if not isinstance(settings, dict) or not settings or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in settings.items()
+        ):
+            raise VerificationError("invalid_settings")
+        games = _scan_all()
+        matched = next((game for game in games if game.get("name", "").lower() == args.game.lower()), {})
+        result = preflight_write(
+            args.game, matched.get("platform", "Unknown"),
+            detect_game_version(matched.get("install_path", "")),
+            _detect_game_files(args.game, args.install_path or ""), settings,
+            VerificationRegistry(__version__),
+        )
+    except json.JSONDecodeError:
+        _json_out({"status": "blocked", "error": "invalid_settings"})
+        raise SystemExit(1)
+    except VerificationError as exc:
+        _json_out({"status": "blocked", "error": str(exc)})
+        raise SystemExit(1)
+    _json_out(result)
+
+
 def cmd_verification_status(args):
     from config_manager import VerificationRegistry, detect_game_version, game_structural_fingerprint
 
@@ -262,9 +291,39 @@ def cmd_export(args):
 def cmd_import(args):
     from config_manager import ConfigPackage
 
+    with open(args.package, encoding="utf-8") as handle:
+        package = json.load(handle)
+    if isinstance(package.get("games"), dict) and "Grand Theft Auto V Enhanced" in package["games"]:
+        _json_out({"status": "blocked", "error": "gta_restore_requires_guard"})
+        raise SystemExit(1)
     pkg = ConfigPackage()
     restored = pkg.import_package(args.package)
     _json_out({"status": "ok", "restored": restored})
+
+
+def cmd_restore_baseline(args):
+    from config_manager import VerificationError, VerificationRegistry, detect_game_version
+    from config_manager.verification import restore_gta_baseline_no_change
+
+    try:
+        if not args.confirm_no_change_restore:
+            raise VerificationError("restore_consent_required")
+        matches = [
+            entry for entry in _scan_all()
+            if entry.get("name") == args.game and entry.get("platform") == "Steam"
+        ]
+        if len(matches) != 1:
+            raise VerificationError("restore_game_not_unique")
+        result = restore_gta_baseline_no_change(
+            args.game, "Steam", detect_game_version(matches[0]["install_path"]),
+            _detect_game_files(args.game, matches[0]["install_path"]),
+            Path(args.package), args.expected_sha256,
+            VerificationRegistry(__version__, data_dir=args.rules_dir), True,
+        )
+    except (OSError, ValueError, VerificationError) as exc:
+        _json_out({"status": "blocked", "error": str(exc)})
+        raise SystemExit(1) from exc
+    _json_out(result)
 
 
 # ── argument parser ──────────────────────────────────────────────────
@@ -300,6 +359,13 @@ def build_parser():
     s.add_argument("--install-path", help="Game install path (optional)")
     s.add_argument("--config-json", help="Path to a JSON file with config file data (skip auto-detect)")
     s.set_defaults(func=cmd_parse)
+
+    # preflight
+    s = sub.add_parser("preflight", help="Check a GTA V Enhanced write without modifying game files")
+    s.add_argument("game", help="Game title")
+    s.add_argument("--settings", required=True, help="JSON settings to validate without writing")
+    s.add_argument("--install-path", help="Game install path (optional)")
+    s.set_defaults(func=cmd_preflight)
 
     # apply
     s = sub.add_parser("apply", help="Write settings to config files")
@@ -349,6 +415,14 @@ def build_parser():
     s = sub.add_parser("import", help="Restore configs from JSON package")
     s.add_argument("package", help="Path to the JSON package file")
     s.set_defaults(func=cmd_import)
+
+    s = sub.add_parser("restore-baseline", help="Guarded no-change GTA V Enhanced baseline import")
+    s.add_argument("game", help="Exact game title")
+    s.add_argument("package", help="Path to the independent v2 baseline")
+    s.add_argument("--expected-sha256", required=True, help="Previously verified baseline package SHA-256")
+    s.add_argument("--rules-dir", type=Path, required=True, help="Isolated directory with reviewed verification rules")
+    s.add_argument("--confirm-no-change-restore", action="store_true")
+    s.set_defaults(func=cmd_restore_baseline)
 
     return p
 

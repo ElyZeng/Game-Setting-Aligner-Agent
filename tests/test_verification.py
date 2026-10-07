@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,8 @@ from config_manager.verification import (
     VerificationRegistry,
     backup_and_write,
     game_structural_fingerprint,
+    preflight_write,
+    restore_gta_baseline_no_change,
     structural_fingerprint,
 )
 
@@ -39,6 +42,27 @@ def test_reviewed_rules_preserve_current_writable_games():
         if rule["status"] in {"write_candidate", "write_verified"}
     }
     assert {"Cyberpunk 2077", "F1 25", "Forza Horizon 6"} <= writable_games
+
+
+def test_reviewed_forza_preset_rule_keeps_existing_settings_and_six_values():
+    rules = [
+        rule for rule in _reviewed_rules()
+        if rule["game"] == "Forza Horizon 6" and rule["platform"] == "Steam"
+    ]
+    assert len(rules) == 1
+    rule = rules[0]
+    assert rule["status"] == "write_candidate"
+    assert rule["version"] == "6.440.853.0"
+    assert rule["fingerprint"] == "75102cb3dd1640ce99dc0dc4b47ea5104a58841de98152b3992974e7147bded5"
+    assert rule["supported_settings"] == [
+        "resolution", "screen_mode", "vsync", "frame_limit",
+        "upscaling", "upscaling_mode", "quick_preset",
+    ]
+    assert rule["supported_values"] == {
+        "quick_preset": ["Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
+    }
+    replacement_path = Path(__file__).resolve().parents[1] / "release-output" / "verification-rules-v1.2.21-forza-draft" / "reviewed-rule.json"
+    assert json.loads(replacement_path.read_text(encoding="utf-8")) == rules
 
 
 def test_reviewed_rules_enable_all_black_myth_retail_writer_settings():
@@ -110,6 +134,400 @@ def test_unknown_game_is_not_allowed_to_write(tmp_path):
             "Unknown Game", "Steam", "1.0", [], {"vsync": "On"},
             lambda *_: [], registry,
         )
+
+
+def _gta_baseline_restore_case(tmp_path):
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    original = b'<Settings>\r\n<video><VSync value="1"/><FrameLimit value="120"/></video>\n</Settings>\r\n'
+    config_path.write_bytes(original)
+    config_files = [{"expanded_path": str(config_path), "found": True, "content": original.decode("utf-8")}]
+    package_path = tmp_path / "independent-baseline.json"
+    package_path.write_text(json.dumps({
+        "version": 2, "games": {game: {"config_files": config_files}},
+    }), encoding="utf-8")
+    package_hash = hashlib.sha256(package_path.read_bytes()).hexdigest()
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path / "rule-cache")
+    manifest = builtin_manifest("0.08.6")
+    manifest["games"].append({
+        "game": game, "platform": "Steam", "version": "1.0.1158.16",
+        "fingerprint": game_structural_fingerprint(game, config_files),
+        "status": "write_candidate", "config_patterns": ["settings.xml"],
+        "supported_settings": ["vsync", "frame_limit"],
+        "supported_values": {"vsync": ["Off", "On"], "frame_limit": ["120 FPS"]},
+        "reader_id": "gta-enhanced-xml-reader", "writer_id": "gta-enhanced-xml-writer",
+    })
+    registry.current_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return game, config_path, config_files, package_path, package_hash, registry, original
+
+
+def test_gta_baseline_restore_requires_exact_rule_and_matching_source(tmp_path):
+    game, config_path, config_files, package_path, package_hash, registry, original = _gta_baseline_restore_case(tmp_path)
+
+    with pytest.raises(VerificationError, match="restore_consent_required"):
+        restore_gta_baseline_no_change(game, "Steam", "1.0.1158.16", config_files, package_path, package_hash, registry)
+    with pytest.raises(VerificationError, match="write_not_allowed:version_mismatch"):
+        restore_gta_baseline_no_change(game, "Steam", "1.0.1158.17", config_files, package_path, package_hash, registry, True)
+    with pytest.raises(VerificationError, match="restore_package_hash_mismatch"):
+        restore_gta_baseline_no_change(game, "Steam", "1.0.1158.16", config_files, package_path, "0" * 64, registry, True)
+    assert config_path.read_bytes() == original
+    assert not (registry.data_dir / "restore-backups").exists()
+
+
+def test_gta_baseline_restore_rejects_extra_config_without_writing(tmp_path):
+    game, config_path, config_files, package_path, _, registry, original = _gta_baseline_restore_case(tmp_path)
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    package["games"][game]["config_files"].append({
+        "expanded_path": str(tmp_path / "other.xml"), "found": True, "content": "other",
+    })
+    package_path.write_text(json.dumps(package), encoding="utf-8")
+
+    with pytest.raises(VerificationError, match="restore_invalid_package"):
+        restore_gta_baseline_no_change(
+            game, "Steam", "1.0.1158.16", config_files, package_path,
+            hashlib.sha256(package_path.read_bytes()).hexdigest(), registry, True,
+        )
+    assert config_path.read_bytes() == original
+    assert not (tmp_path / "other.xml").exists()
+
+
+def test_gta_baseline_restore_cli_uses_isolated_rules(tmp_path, monkeypatch, capsys):
+    import cli
+
+    game, config_path, config_files, package_path, package_hash, registry, original = _gta_baseline_restore_case(tmp_path)
+    monkeypatch.setattr(cli, "_scan_all", lambda: [{
+        "name": game, "platform": "Steam", "install_path": str(tmp_path / "game"),
+    }])
+    monkeypatch.setattr(cli, "_detect_game_files", lambda *_args: config_files)
+    monkeypatch.setattr("config_manager.detect_game_version", lambda _path: "1.0.1158.16")
+    args = cli.build_parser().parse_args([
+        "restore-baseline", game, str(package_path), "--expected-sha256", package_hash,
+        "--rules-dir", str(registry.data_dir), "--confirm-no-change-restore",
+    ])
+
+    args.func(args)
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok" and result["files_restored"] == 1
+    assert result["settings_before"] == result["settings_after"]
+    assert config_path.read_bytes() == original
+    assert not registry.test_write_enabled()
+
+
+def test_gta_baseline_restore_imports_once_with_exact_bytes_and_parser(tmp_path, monkeypatch):
+    from config_manager.package import ConfigPackage
+
+    game, config_path, config_files, package_path, package_hash, registry, original = _gta_baseline_restore_case(tmp_path)
+    imported = []
+    original_import = ConfigPackage._import_v2
+
+    def import_once(package, payload):
+        imported.append(True)
+        return original_import(package, payload)
+
+    monkeypatch.setattr(ConfigPackage, "_import_v2", import_once)
+    result = restore_gta_baseline_no_change(
+        game, "Steam", "1.0.1158.16", config_files, package_path, package_hash, registry, True,
+    )
+
+    assert imported == [True]
+    assert result["status"] == "ok" and result["files_restored"] == 1
+    assert result["sha256_before"] == result["sha256_after"] == hashlib.sha256(original).hexdigest()
+    assert result["settings_before"] == result["settings_after"]
+    assert config_path.read_bytes() == original
+    assert Path(result["rescue_backup"]).read_bytes() == original
+
+
+def test_gta_baseline_restore_recovers_after_partial_import(tmp_path, monkeypatch):
+    game, config_path, config_files, package_path, package_hash, registry, original = _gta_baseline_restore_case(tmp_path)
+
+    def partial_import(_package, _payload):
+        config_path.write_bytes(b"partial restore")
+        return {game: []}
+
+    monkeypatch.setattr("config_manager.verification.ConfigPackage._import_v2", partial_import)
+    with pytest.raises(VerificationError, match="restore_validation_failed_restored"):
+        restore_gta_baseline_no_change(
+            game, "Steam", "1.0.1158.16", config_files, package_path, package_hash, registry, True,
+        )
+    assert config_path.read_bytes() == original
+    assert len(list((registry.data_dir / "restore-backups").glob("gta-*.bak"))) == 1
+
+
+def test_gta_preflight_requires_exact_rule_and_value_without_writing(tmp_path):
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    content = '<Settings><video><VSync value="1"/><FrameLimit value="120"/></video></Settings>'
+    config_path.write_text(content, encoding="utf-8")
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path / "app-data")
+
+    with pytest.raises(VerificationError, match="write_not_allowed:game_not_listed"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {"vsync": "Off"}, registry)
+
+    fingerprint = game_structural_fingerprint(game, config_files)
+    rule = {
+        "game": game, "platform": "Steam", "version": "1.0.1158.16",
+        "fingerprint": fingerprint, "writer_id": "gta-enhanced-xml-writer",
+        "supported_settings": ["vsync"], "supported_values": {"vsync": ["Off"]},
+    }
+    registry.status_for = lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": rule}
+
+    with pytest.raises(VerificationError, match="write_value_not_allowed:vsync"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {"vsync": "On"}, registry)
+    rule["fingerprint"] = "different"
+    with pytest.raises(VerificationError, match="write_not_allowed:exact_gta_rule_required"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {"vsync": "Off"}, registry)
+    rule["fingerprint"] = fingerprint
+
+    result = preflight_write(game, "Steam", "1.0.1158.16", config_files, {"vsync": "Off"}, registry)
+    assert result["status"] == "ok"
+    wrong_path = tmp_path / "unrelated" / "settings.xml"
+    wrong_path.parent.mkdir()
+    wrong_path.write_text(content, encoding="utf-8")
+    wrong_files = [{"found": True, "expanded_path": str(wrong_path), "content": content}]
+    rule["fingerprint"] = game_structural_fingerprint(game, wrong_files)
+    with pytest.raises(VerificationError, match="write_not_allowed:gta_config_not_unique"):
+        preflight_write(game, "Steam", "1.0.1158.16", wrong_files, {"vsync": "Off"}, registry)
+    rule["fingerprint"] = fingerprint
+    rule["supported_values"]["vsync"] = ["On"]
+    with pytest.raises(VerificationError, match="write_no_change"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {"vsync": "On"}, registry)
+    rule["supported_values"]["vsync"] = ["Off"]
+    rule["supported_values"]["vsync"].append("Maybe")
+    with pytest.raises(VerificationError, match="write_not_allowed:gta_values_required"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {"vsync": "Off"}, registry)
+    rule["supported_values"]["vsync"].remove("Maybe")
+    assert config_path.read_text(encoding="utf-8") == content
+
+    invalid_content = "<Settings><video>"
+    config_path.write_text(invalid_content, encoding="utf-8")
+    rule["fingerprint"] = game_structural_fingerprint(game, [{**config_files[0], "content": invalid_content}])
+    with pytest.raises(VerificationError, match="write_preflight_failed:gta_xml"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {"vsync": "Off"}, registry)
+    assert config_path.read_text(encoding="utf-8") == invalid_content
+    assert not registry.test_write_enabled()
+
+
+@pytest.mark.parametrize("key, target, current", [
+    ("resolution", "1600x900", "1920x1080"),
+    ("screen_mode", "Fullscreen", "Borderless Windowed"),
+    ("upscaling", "Sampling", "FSR 3"),
+    ("upscaling_mode", "Balanced", "Quality"),
+    ("frame_generation", "AMD FSR 3", "Off"),
+])
+def test_gta_remaining_preflight_requires_explicit_value_without_writing(tmp_path, key, target, current):
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    content = (
+        '<Settings><video><ScreenWidth value="1920"/><ScreenHeight value="1080"/><Windowed value="2"/>'
+        '<VSync value="1"/><FrameLimit value="120"/></video><graphics>'
+        '<ResScalingType value="3"/><SamplingMode value="0"/>'
+        '<fsrQuality value="2"/><fsr3Quality value="2"/>'
+        '<fsr3FrameGenMode value="1"/><FrameGenType value="0"/></graphics></Settings>'
+    )
+    config_path.write_text(content, encoding="utf-8")
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    rule = {
+        "game": game, "platform": "Steam", "version": "1.0.1158.16",
+        "fingerprint": game_structural_fingerprint(game, config_files),
+        "writer_id": "gta-enhanced-xml-writer", "supported_settings": ["vsync", "frame_limit"],
+        "supported_values": {"vsync": ["Off", "On"], "frame_limit": ["120 FPS"]},
+    }
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path / "app-data")
+    registry.status_for = lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": rule}
+
+    with pytest.raises(VerificationError, match=f"write_setting_not_allowed:{key}"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {key: target}, registry)
+    rule["supported_settings"].append(key)
+    rule["supported_values"][key] = [target]
+    assert preflight_write(game, "Steam", "1.0.1158.16", config_files, {key: target}, registry)["status"] == "ok"
+    with pytest.raises(VerificationError, match=f"write_value_not_allowed:{key}"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {key: current}, registry)
+    assert config_path.read_text(encoding="utf-8") == content
+    assert not (registry.data_dir / "backups").exists()
+    if key == "frame_generation":
+        stale = content.replace('<SamplingMode value="0"/>', '<SamplingMode value="8"/>')
+        config_path.write_text(stale, encoding="utf-8")
+        with pytest.raises(VerificationError, match="write_preflight_failed:gta_xml"):
+            preflight_write(game, "Steam", "1.0.1158.16", config_files, {key: target}, registry)
+        assert config_path.read_text(encoding="utf-8") == stale
+        assert not (registry.data_dir / "backups").exists()
+
+
+@pytest.mark.parametrize("method, target, current", [
+    ("2", "Performance", "Quality"), ("1", "5/2", "1/2"),
+])
+def test_gta_scaling_preflight_requires_observed_parent_and_value(tmp_path, method, target, current):
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    content = (
+        '<Settings><video/><graphics>'
+        f'<ResScalingType value="{method}"/><SamplingMode value="0"/>'
+        '<fsrQuality value="2"/><fsr3Quality value="2"/></graphics></Settings>'
+    )
+    config_path.write_text(content, encoding="utf-8")
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    rule = {
+        "platform": "Steam", "version": "1.0.1158.16",
+        "fingerprint": game_structural_fingerprint(game, config_files),
+        "writer_id": "gta-enhanced-xml-writer", "supported_settings": ["upscaling_mode"],
+        "supported_values": {"upscaling_mode": [target]},
+    }
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path / "app-data")
+    registry.status_for = lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": rule}
+
+    assert preflight_write(game, "Steam", "1.0.1158.16", config_files, {"upscaling_mode": target}, registry)["status"] == "ok"
+    with pytest.raises(VerificationError, match="write_value_not_allowed:upscaling_mode"):
+        preflight_write(game, "Steam", "1.0.1158.16", config_files, {"upscaling_mode": current}, registry)
+    assert config_path.read_text(encoding="utf-8") == content
+    assert not (registry.data_dir / "backups").exists()
+
+
+def test_gta_apply_rejects_unapproved_value_before_writer(tmp_path):
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    content = '<Settings><video><VSync value="1"/></video></Settings>'
+    config_path.write_text(content, encoding="utf-8")
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate", "reason": "verified",
+        "rule": {
+            "game": game, "platform": "Steam", "version": "1.0.1158.16",
+            "fingerprint": game_structural_fingerprint(game, config_files),
+            "writer_id": "gta-enhanced-xml-writer", "supported_settings": ["vsync"],
+            "supported_values": {"vsync": ["Off"]},
+        },
+    }
+    writes = []
+
+    with pytest.raises(VerificationError, match="write_value_not_allowed:vsync"):
+        backup_and_write(
+            game, "Steam", "1.0.1158.16", config_files, {"vsync": "On"},
+            lambda *_args: writes.append(True), registry,
+        )
+
+    assert writes == []
+    assert config_path.read_text(encoding="utf-8") == content
+
+
+def test_gta_guarded_apply_writes_only_temporary_config(tmp_path):
+    from config_manager.settings_writer import write_settings
+
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    content = '<Settings><video><VSync value="1"/><FrameLimit value="120"/></video></Settings>'
+    config_path.write_text(content, encoding="utf-8")
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate", "reason": "verified",
+        "rule": {
+            "game": game, "platform": "Steam", "version": "1.0.1158.16",
+            "fingerprint": game_structural_fingerprint(game, config_files),
+            "writer_id": "gta-enhanced-xml-writer", "supported_settings": ["vsync", "frame_limit"],
+            "supported_values": {"vsync": ["Off"], "frame_limit": ["60 FPS"]},
+        },
+    }
+    settings = {"vsync": "Off", "frame_limit": "60 FPS"}
+
+    result = backup_and_write(game, "Steam", "1.0.1158.16", config_files, settings, write_settings, registry)
+
+    assert len(result) == 1 and result[0]["status"] == "ok"
+    assert config_path.read_text(encoding="utf-8") == content.replace('value="1"', 'value="0"').replace('value="120"', 'value="60"')
+    assert (registry.data_dir / "backups" / game.replace(" ", "_") / "0-settings.xml").read_text(encoding="utf-8") == content
+
+
+def test_gta_failed_guarded_apply_restores_original_bytes(tmp_path, monkeypatch):
+    from config_manager.settings_writer import write_settings
+
+    game = "Grand Theft Auto V Enhanced"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    original = b'<Settings>\r\n<video><VSync value="1"/></video>\n</Settings>\r\n'
+    config_path.write_bytes(original)
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": original.decode("utf-8")}]
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate", "reason": "verified",
+        "rule": {
+            "game": game, "platform": "Steam", "version": "1.0.1158.16",
+            "fingerprint": game_structural_fingerprint(game, config_files),
+            "writer_id": "gta-enhanced-xml-writer", "supported_settings": ["vsync"],
+            "supported_values": {"vsync": ["Off"]},
+        },
+    }
+
+    def fail_after_change(_config_files, _settings):
+        config_path.write_bytes(b"damaged")
+        return [{"path": str(config_path), "status": "error", "detail": "test failure"}]
+
+    monkeypatch.setattr("config_manager.verification._write_gta_enhanced_settings", fail_after_change)
+
+    with pytest.raises(VerificationError, match="write_validation_failed_restored"):
+        backup_and_write(
+            game, "Steam", "1.0.1158.16", config_files, {"vsync": "Off"}, write_settings, registry,
+        )
+
+    assert config_path.read_bytes() == original
+
+
+@pytest.mark.parametrize("key,value,old_code,new_code", [
+    ("vsync", "On", "0", "1"),
+    ("vsync", "Off", "1", "0"),
+    *( ("frame_limit", "Unlimited" if fps == 0 else f"{fps} FPS", "60" if fps == 120 else "120", str(fps))
+       for fps in (0, 30, 40, 45, 60, 72, 75, 90, 105, 120) ),
+])
+def test_gta_temporary_write_matrix_and_independent_restore(tmp_path, key, value, old_code, new_code):
+    from config_manager.package import ConfigPackage
+    from config_manager.settings_writer import write_settings
+
+    game = "Grand Theft Auto V Enhanced"
+    tag = "VSync" if key == "vsync" else "FrameLimit"
+    config_path = tmp_path / "GTAV Enhanced" / "settings.xml"
+    config_path.parent.mkdir()
+    content = f'<Settings>\r\n<video><VSync value="1"/><FrameLimit value="120"/></video>\n</Settings>\r\n'
+    content = content.replace(f'<{tag} value="{("1" if key == "vsync" else "120")}"/>', f'<{tag} value="{old_code}"/>')
+    original = content.encode("utf-8")
+    config_path.write_bytes(original)
+    config_files = [{"found": True, "expanded_path": str(config_path), "content": content}]
+    package_path = tmp_path / "independent-baseline.json"
+    package_path.write_text(json.dumps({
+        "version": 2, "games": {game: {"config_files": config_files}},
+    }), encoding="utf-8")
+    baseline_hash = hashlib.sha256(original).hexdigest()
+    registry = VerificationRegistry("0.08.6", data_dir=tmp_path / "app-data")
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate", "reason": "verified",
+        "rule": {
+            "game": game, "platform": "Steam", "version": "1.0.1158.16",
+            "fingerprint": game_structural_fingerprint(game, config_files),
+            "writer_id": "gta-enhanced-xml-writer", "supported_settings": [key],
+            "supported_values": {key: [value]},
+        },
+    }
+
+    assert preflight_write(game, "Steam", "1.0.1158.16", config_files, {key: value}, registry)["status"] == "ok"
+    result = backup_and_write(game, "Steam", "1.0.1158.16", config_files, {key: value}, write_settings, registry)
+
+    assert result[0]["status"] == "ok"
+    expected = content.replace(f'<{tag} value="{old_code}"/>', f'<{tag} value="{new_code}"/>')
+    assert config_path.read_bytes() == expected.encode("utf-8")
+    assert (registry.data_dir / "backups" / game.replace(" ", "_") / "0-settings.xml").read_bytes() == original
+
+    assert ConfigPackage().import_package(str(package_path))[game] == [str(config_path)]
+    assert hashlib.sha256(config_path.read_bytes()).hexdigest() == baseline_hash
 
 
 def test_write_rule_rejects_settings_not_in_supported_list(tmp_path):
@@ -310,6 +728,92 @@ def test_forza_rejects_vsync_on_with_unlimited_frame_limit_before_write(tmp_path
         )
 
     assert writes == []
+
+
+def test_forza_preset_rule_rejects_unlisted_value_before_write(tmp_path):
+    game = "Forza Horizon 6"
+    config_path = tmp_path / "ForzaUserConfigSelections" / "UserConfigSelections"
+    config_path.parent.mkdir()
+    original = '<UserConfig Version="52" />'
+    config_path.write_text(original, encoding="utf-8")
+    config_files = [{"expanded_path": str(config_path), "found": True, "content": original}]
+    fingerprint = game_structural_fingerprint(game, config_files)
+    registry = VerificationRegistry("0.08.17", data_dir=tmp_path / "rules")
+    registry.enable_test_writes()
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate", "reason": "verified", "rule": {
+            "platform": "Steam", "version": "6.440.853.0", "fingerprint": fingerprint,
+            "writer_id": "forza-xml-writer", "supported_settings": ["quick_preset"],
+            "supported_values": {"quick_preset": ["Ultra"]},
+        },
+    }
+    writes = []
+
+    with pytest.raises(VerificationError, match="write_value_not_allowed:quick_preset"):
+        backup_and_write(
+            game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Low"},
+            lambda *_args: writes.append(True) or [], registry,
+        )
+
+    assert writes == []
+    assert config_path.read_text(encoding="utf-8") == original
+    assert not (registry.data_dir / "backups").exists()
+
+
+def test_forza_preset_preflight_requires_complete_xml_and_sidecar(tmp_path, monkeypatch):
+    from config_manager.settings_parser import FORZA_PRESET_SIGNATURES
+    from config_manager.settings_writer import FORZA_PRESET_V52_FIELDS
+
+    game = "Forza Horizon 6"
+    config_path = tmp_path / "ForzaHorizon6" / "LocalStorage_Shared" / "ForzaUserConfigSelections" / "UserConfigSelections"
+    config_path.parent.mkdir(parents=True)
+    sidecar = config_path.parents[2] / "fullscreen_choice"
+    sidecar.write_bytes(b"\x01")
+    root = ET.Element("UserConfig", Version="52")
+    selections = ET.SubElement(root, "selections")
+    for option_id, value in FORZA_PRESET_SIGNATURES["High"].items():
+        ET.SubElement(selections, "option", id=option_id, value=value)
+    fields = {}
+    for (tag, attr), values in FORZA_PRESET_V52_FIELDS.items():
+        fields.setdefault(tag, {})[attr] = values[3]
+    for tag, attributes in fields.items():
+        ET.SubElement(root, tag, attributes)
+    original = ET.tostring(root, encoding="unicode")
+    config_path.write_text(original, encoding="utf-8")
+    config_files = [{"expanded_path": str(config_path), "found": True, "content": original}]
+    fingerprint = game_structural_fingerprint(game, config_files)
+    registry = VerificationRegistry("0.08.17", data_dir=tmp_path / "rules")
+    registry.status_for = lambda *_args: {
+        "status": "write_candidate", "reason": "verified", "rule": {
+            "platform": "Steam", "version": "6.440.853.0", "fingerprint": fingerprint,
+            "writer_id": "forza-xml-writer", "supported_settings": ["quick_preset"],
+            "supported_values": {"quick_preset": ["Ultra"]},
+        },
+    }
+
+    assert preflight_write(game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Ultra"}, registry)["status"] == "ok"
+    assert config_path.read_text(encoding="utf-8") == original
+    assert sidecar.read_bytes() == b"\x01"
+
+    def reject_preflight(*_args):
+        raise VerificationError("forza_preflight_reached")
+
+    writes = []
+    registry.enable_test_writes()
+    with monkeypatch.context() as patch:
+        patch.setattr("config_manager.verification.preflight_write", reject_preflight)
+        with pytest.raises(VerificationError, match="forza_preflight_reached"):
+            backup_and_write(
+                game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Ultra"},
+                lambda *_args: writes.append(True) or [], registry,
+            )
+    assert writes == []
+    assert not (registry.data_dir / "backups").exists()
+
+    sidecar.unlink()
+    with pytest.raises(VerificationError, match="forza_preset_config_incomplete"):
+        preflight_write(game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Ultra"}, registry)
+    assert config_path.read_text(encoding="utf-8") == original
 
 
 def test_f1_rejects_frame_generation_with_fullscreen_before_write(tmp_path):

@@ -243,6 +243,14 @@ GUI 的 **Export Diagnostics** 會先開啟逐檔選取視窗。`input`、`key`�
 python cli.py apply "Counter-Strike 2" --settings '{"vsync": "Off"}' --confirm-test-write
 ```
 
+GTA V Enhanced 的一般 `cli.py import` 會拒絕匯入；只有在遊戲與啟動器退出、雲端同步暫停、已人工審核精確 `write_candidate` 規則並存放於隔離規則目錄，且獨立 v2 基線套件內容與目前實檔逐位元組相同時，才可驗證零設定變更的還原：
+
+```bash
+python cli.py restore-baseline "Grand Theft Auto V Enhanced" "<private-baseline-v2.json>" --expected-sha256 "<previously-verified-sha256>" --rules-dir "<isolated-reviewed-rules-dir>" --confirm-no-change-restore
+```
+
+此命令先保存獨立救援備份，匯入後核對前後原始位元組與解析值；不啟用一般測試寫入同意，也不證明從已更改設定還原、逐值 Apply 或遊戲內持久性。
+
 本機驗證名單、備份與匯出摘要保存於 `%LOCALAPPDATA%\GameTuner\`。資料包採隨機 ID 命名，沒有自動上傳功能；僅透過核准的私下管道交付。
 
 維護者收到資料包後，可先建立本機待審核候選項目；人工審核規則後，再產生要上傳到 GitHub Release 的資產：
@@ -252,6 +260,10 @@ python tools/manage_verification.py candidate game-tuner-report-<id>.zip --outpu
 python tools/manage_verification.py build-release reviewed-rules.json --output-dir release-assets --version 1.0.0 --minimum-client-version 0.05.1
 python tools/manage_verification.py build-bundle reviewed-rules.json --output verified-rules.gtrules --version 1.0.0 --minimum-client-version 0.05.1
 ```
+
+若只新增單一遊戲規則，請先取得並核對**當下已發布**的 `verified-games.json` 與同目錄的 `verified-games.json.sha256`，再對 `build-release` 或 `build-bundle` 加上 `--base-manifest <verified-games.json>`；建置器會保留基底規則並拒絕校驗錯誤或重複規則。不要用 GTA-only 規則陣列取代原有驗證名單，也不要將本機舊版預覽當成目前遠端版本。
+
+若要更新已發布遊戲的同一平台、版本及指紋規則，可用僅含該筆審核規則的 JSON 清單，搭配 `--base-manifest <verified-games.json> --replace-base-rule` 精確替換一筆。Forza Horizon 6 `quick_preset` 的候選規則要求最低客戶端 `0.08.18`；必須先發佈包含新版 writer 與 preflight 的客戶端，再發布新規則，不能讓舊版 `0.08.17` 取得此寫入權限。
 
 將 `release-assets/verified-games.json` 及 `release-assets/verified-games.json.sha256` 以同一個 Release 上傳至 `ElyZeng/Game-Setting-Aligner-Agent`。
 

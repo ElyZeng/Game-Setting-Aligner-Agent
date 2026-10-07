@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -461,6 +462,38 @@ def _write_black_myth_ini(
 
 
 
+FORZA_PRESET_V52_ORDER = ("Very Low", "Low", "Medium", "High", "Ultra", "Extreme")
+FORZA_PRESET_V52_FIELDS = {
+    ("CollidableShadows", "value"): ("0", "0", "1", "1", "1", "1"),
+    ("CarSpecularCubemapResolution", "dynamicValue"): ("Low", "Low", "Medium", "High", "High", "High"),
+    ("GlobalSpecularCubemapResolution", "value"): ("128", "128", "256", "512", "512", "512"),
+    ("CubemapDrawDistanceScalar", "value"): ("1.000000", "1.000000", "1.000000", "3.000000", "3.000000", "3.000000"),
+    ("CubemapMeshSizeThresholdScalar", "value"): ("1.000000", "1.000000", "1.000000", "0.143000", "0.143000", "0.143000"),
+    ("EnvMapFrequencyScale", "dynamicValue"): ("Off", "Low", "Medium", "High", "High", "Ultra"),
+    ("CarReflectionLOD", "dynamicValue"): ("VeryLow", "Low", "Medium", "High", "High", "Ultra"),
+    ("CollidablesInMirror", "value"): ("0", "0", "0", "0", "0", "1"),
+    ("MaxCarsInMirror", "value"): ("3", "3", "7", "7", "7", "16"),
+    ("LOD3CarsInMirror", "value"): ("0", "0", "0", "1", "1", "1"),
+    ("HalfRateMirror", "value"): ("1", "1", "0", "0", "0", "0"),
+    ("ParticlesInMirror", "value"): ("0", "0", "0", "0", "0", "1"),
+    ("CarFocusLODMinMax", "dynamicValue"): ("VeryLow", "VeryLow", "Low", "High", "Ultra", "Ultra"),
+    ("CarNonFocusLODMinMax", "min"): ("3", "3", "2", "1", "1", "1"),
+    ("EnableWindshieldReflections", "value"): ("0", "0", "1", "1", "1", "1"),
+    ("WindshieldReflectionResolution", "value"): ("1", "1", "256", "512", "512", "512"),
+    ("MirrorResolution", "value"): ("160", "160", "160", "320", "320", "320"),
+    ("MirrorFarDistance", "value"): ("500", "500", "500", "2000", "2000", "2000"),
+    ("UIHUDGlassCaptureEnabled", "value"): ("0", "1", "1", "1", "1", "1"),
+    ("ScreenAreaTestsMain", "MainScene"): ("70.000000", "120.000000", "180.000000", "200.000000", "200.000000", "200.000000"),
+    ("ScreenAreaTestsMain", "Depth"): ("10.000000", "25.000000", "50.000000", "60.000000", "60.000000", "60.000000"),
+    ("ScreenAreaTestsMain", "Cinematic"): ("50.000000", "80.000000", "100.000000", "130.000000", "130.000000", "130.000000"),
+    ("ScreenAreaTestsShadow", "value"): ("0.000000", "40.000000", "100.000000", "100.000000", "100.000000", "100.000000"),
+    ("ScreenAreaTestsCubemap", "value"): ("0.000000", "25.000000", "70.000000", "70.000000", "70.000000", "100.000000"),
+    ("ScreenAreaTestsMirror", "value"): ("3.000000", "3.000000", "5.000000", "5.000000", "5.000000", "5.000000"),
+    ("FWDPlusQuality", "dynamicValue"): ("VeryLow", "Low", "Low", "High", "High", "High"),
+    ("UseLowQualityAIDrivers", "value"): ("1", "1", "0", "0", "0", "0"),
+}
+
+
 def _write_forza_xml(
     content: str, settings: Dict[str, Optional[str]]
 ) -> str:
@@ -477,9 +510,15 @@ def _write_forza_xml(
     # Overall preset writes the captured base-game quality signature. RT variants
     # remain read-only because their ray-tracing level is a separate dimension.
     preset = settings.get(QUICK_PRESET)
+    if preset is not None and preset not in FORZA_PRESET_SIGNATURES:
+        raise ValueError("Unsupported Forza preset")
     if preset in FORZA_PRESET_SIGNATURES:
         for option_id, option_value in FORZA_PRESET_SIGNATURES[preset].items():
             result = _replace_xml_option(result, option_id, option_value)
+        if re.search(r'<UserConfig\b[^>]*\bVersion="52"', content):
+            index = FORZA_PRESET_V52_ORDER.index(preset)
+            for (tag, attr), values in FORZA_PRESET_V52_FIELDS.items():
+                result = _replace_xml_attr(result, tag, attr, values[index])
 
     # Screen Mode
     val = settings.get(SCREEN_MODE)
@@ -636,6 +675,148 @@ def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
     return result
 
 
+# ── Grand Theft Auto V Enhanced XML Writer ──────────────────────────
+
+GTA_ENHANCED_SCALING_MODES = {
+    "1": ("SamplingMode", {
+        "1/2": "0", "2/3": "1", "3/4": "2", "5/6": "3", "5/4": "4",
+        "3/2": "5", "7/4": "6", "2/1": "7", "5/2": "8",
+    }),
+    "2": ("fsrQuality", {"Quality": "2", "Performance": "4"}),
+    "3": ("fsr3Quality", {"Performance": "0", "Balanced": "1", "Quality": "2", "Native AA": "3"}),
+}
+
+GTA_ENHANCED_WRITE_CODES = {
+    RESOLUTION: {"1920x1080": ("1920", "1080"), "1600x900": ("1600", "900")},
+    SCREEN_MODE: {
+        "Fullscreen": "0",
+        "Borderless Windowed": "2", "Borderless Fullscreen": "3",
+    },
+    VSYNC: {"Off": "0", "On": "1"},
+    FRAME_LIMIT: {"Unlimited": "0", **{f"{fps} FPS": str(fps) for fps in (30, 40, 45, 60, 72, 75, 90, 105, 120)}},
+    UPSCALING: {"Off": "0", "Sampling": "1", "FSR 1": "2", "FSR 3": "3"},
+    FRAME_GENERATION: {"Off": "0", "AMD FSR 3": "2"},
+    UPSCALING_MODE: {
+        value: value for _, codes in GTA_ENHANCED_SCALING_MODES.values() for value in codes
+    },
+}
+
+
+def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
+    if not settings or set(settings) - set(GTA_ENHANCED_WRITE_CODES) or any(
+        value not in GTA_ENHANCED_WRITE_CODES[key] for key, value in settings.items()
+    ):
+        raise ValueError("Unsupported GTA V Enhanced write settings")
+
+    root = ET.fromstring(content)
+    if root.tag != "Settings":
+        raise ValueError("Unexpected GTA V Enhanced XML root")
+    if RESOLUTION in settings:
+        mode = root.find("./video/Windowed")
+        if set(settings) != {RESOLUTION} or mode is None or mode.get("value") != "2":
+            raise ValueError("GTA V Enhanced resolution requires Borderless Windowed")
+    if SCREEN_MODE in settings:
+        width = root.find("./video/ScreenWidth")
+        height = root.find("./video/ScreenHeight")
+        if (
+            set(settings) != {SCREEN_MODE}
+            or width is None or width.get("value") != "1920"
+            or height is None or height.get("value") != "1080"
+        ):
+            raise ValueError("GTA V Enhanced screen mode requires 1920x1080")
+    if UPSCALING in settings:
+        if set(settings) != {UPSCALING}:
+            raise ValueError("GTA V Enhanced method change must be atomic")
+        frame_generation = root.find("./graphics/FrameGenType")
+        if frame_generation is None or frame_generation.get("value") != "0":
+            raise ValueError("GTA V Enhanced method change requires frame generation Off")
+        current_method = root.find("./graphics/ResScalingType")
+        current_spec = GTA_ENHANCED_SCALING_MODES.get(current_method.get("value")) if current_method is not None else None
+        if current_spec is not None:
+            current_mode = root.find(f"./graphics/{current_spec[0]}")
+            if current_mode is None or current_mode.get("value") not in current_spec[1].values():
+                raise ValueError("GTA V Enhanced source method has unknown quality or scale")
+        method = GTA_ENHANCED_WRITE_CODES[UPSCALING][settings[UPSCALING]]
+        if method != "0":
+            mode_spec = GTA_ENHANCED_SCALING_MODES[method]
+            mode_node = root.find(f"./graphics/{mode_spec[0]}")
+            if mode_node is None or mode_node.get("value") not in mode_spec[1].values():
+                raise ValueError("GTA V Enhanced target method has unknown quality or scale")
+    mode_tag = None
+    mode_codes = None
+    if UPSCALING_MODE in settings:
+        scaling = root.find("./graphics/ResScalingType")
+        mode_spec = GTA_ENHANCED_SCALING_MODES.get(scaling.get("value")) if scaling is not None else None
+        if mode_spec is None or settings[UPSCALING_MODE] not in mode_spec[1]:
+            raise ValueError("Unsupported GTA V Enhanced upscaling mode for current method")
+        frame_generation = root.find("./graphics/FrameGenType")
+        if frame_generation is not None and frame_generation.get("value") != "0":
+            raise ValueError("GTA V Enhanced scaling mode change requires frame generation Off")
+        if scaling.get("value") == "3" and frame_generation is None:
+            raise ValueError("GTA V Enhanced FSR 3 quality change requires frame generation Off")
+        mode_tag, mode_codes = mode_spec
+    if FRAME_GENERATION in settings:
+        scaling = root.find("./graphics/ResScalingType")
+        quality = root.find("./graphics/fsr3Quality")
+        frame_gen_mode = root.find("./graphics/fsr3FrameGenMode")
+        if (
+            set(settings) != {FRAME_GENERATION}
+            or scaling is None or scaling.get("value") != "3"
+            or quality is None or quality.get("value") != "2"
+            or frame_gen_mode is None or frame_gen_mode.get("value") != "1"
+        ):
+            raise ValueError("GTA V Enhanced frame generation requires FSR 3 Quality")
+        sampling = root.find("./graphics/SamplingMode")
+        if sampling is None or sampling.get("value") != "0":
+            raise ValueError("GTA V Enhanced frame generation requires inactive Sampling 1/2")
+
+    patches = [
+        (RESOLUTION, "video", "ScreenWidth", 0), (RESOLUTION, "video", "ScreenHeight", 1),
+        (SCREEN_MODE, "video", "Windowed", None),
+        (VSYNC, "video", "VSync", None), (FRAME_LIMIT, "video", "FrameLimit", None),
+        (UPSCALING, "graphics", "ResScalingType", None),
+        (FRAME_GENERATION, "graphics", "FrameGenType", None),
+    ]
+    if mode_tag is not None:
+        patches.append((UPSCALING_MODE, "graphics", mode_tag, None))
+    for key, parent, tag, component in patches:
+        if key not in settings:
+            continue
+        node = root.find(f"./{parent}/{tag}")
+        if node is None or len(root.findall(f".//{tag}")) != 1:
+            raise ValueError(f"Missing or ambiguous GTA V Enhanced {tag} node")
+        codes = mode_codes if key == UPSCALING_MODE else GTA_ENHANCED_WRITE_CODES[key]
+        known = (value[component] for value in codes.values()) if component is not None else codes.values()
+        if node.get("value") not in known:
+            raise ValueError(f"Unsupported GTA V Enhanced {tag} value")
+        matches = list(re.finditer(rf'(<{tag}\b[^>]*\bvalue=")([^"]*)(")', content))
+        if len(matches) != 1 or matches[0].group(2) != node.get("value"):
+            raise ValueError(f"Unpatchable GTA V Enhanced {tag} node")
+        match = matches[0]
+        replacement = codes[settings[key]]
+        content = content[:match.start(2)] + (replacement[component] if component is not None else replacement) + content[match.end(2):]
+    return content
+
+
+def _write_gta_enhanced_settings(
+    config_files: List[Dict[str, Any]], settings: Dict[str, str]
+) -> List[Dict[str, str]]:
+    config_file = config_files[0]
+    path = Path(config_file["expanded_path"])
+    try:
+        original = path.read_bytes()
+        content = original.decode("utf-8")
+        if content != config_file["content"]:
+            raise ValueError("GTA V Enhanced config changed since validation")
+        patched = _write_gta_enhanced_xml(content, settings)
+        if patched == content:
+            raise ValueError("GTA V Enhanced write would not change config")
+        path.write_bytes(patched.encode("utf-8"))
+        return [{"path": str(path), "status": "ok", "detail": "GTA V Enhanced settings written"}]
+    except (OSError, UnicodeError, ValueError, ET.ParseError) as exc:
+        return [{"path": str(path), "status": "error", "detail": str(exc)}]
+
+
 # ── Registry JSON Writer ────────────────────────────────────────────
 
 def _write_registry_json(
@@ -774,12 +955,12 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
     """Detect which parser type a game uses, returning a type string.
 
     Returns one of: ``"cyberpunk"``, ``"black_myth"``, ``"unreal_ini"``,
-    ``"forza_xml"``, ``"registry_json"``, ``"cs2"``, ``"unknown"``.
+    ``"forza_xml"``, ``"gta_enhanced_xml"``, ``"registry_json"``, ``"cs2"``, ``"unknown"``.
     """
     name_lower = game_name.lower()
 
     if "grand theft auto v enhanced" in name_lower:
-        return "unknown"
+        return "gta_enhanced_xml"
     if "cyberpunk" in name_lower:
         return "cyberpunk"
     if "black myth" in name_lower or "wukong" in name_lower:
@@ -867,6 +1048,9 @@ def write_settings(
                 break
         else:
             results.append({"path": "", "status": "skipped", "detail": "No UserSettings.json found"})
+
+    elif parser_type == "gta_enhanced_xml":
+        results.append({"path": "", "status": "skipped", "detail": "GTA V Enhanced requires guarded Apply"})
 
     elif parser_type in {"black_myth", "black_myth_benchmark"}:
         for cfg in readable:
