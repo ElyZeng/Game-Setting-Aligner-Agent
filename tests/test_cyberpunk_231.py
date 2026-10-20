@@ -465,3 +465,23 @@ def test_quick_preset_options_match_the_game():
     """#99: only presets that exist in Cyberpunk 2077 2.31 are offered."""
     assert setting_options_for_game("Cyberpunk 2077", QUICK_PRESET)[1:] == [
         "Low", "Medium", "High", "Ultra", "Ray Tracing Low", "Ray Tracing Medium", "Ray Tracing Ultra", "Path Tracing"]
+
+
+def test_quick_preset_keeps_list_indexes_in_step(tmp_path):
+    """#99: the game reads "index"; a written list value must move its index too."""
+    content = json.dumps({"data": [
+        {"group_name": "/graphics/presets", "options": [
+            {"name": "QuickPresets", "type": "string_list", "is_dynamic": True, "value": "Custom", "index": 0},
+            {"name": "XESS", "type": "string_list", "is_dynamic": True, "value": "Balanced", "index": 3}]},
+        {"group_name": "/graphics/advanced", "options": [
+            {"name": "AmbientOcclusion", "type": "string_list", "value": "Low", "index": 1,
+             "values": ["Off", "Low", "Medium", "High"]}]},
+    ]})
+    config_path = tmp_path / "UserSettings.json"
+    config_path.write_text(content, encoding="utf-8")
+    write_settings("Cyberpunk 2077", [{"found": True, "content": content, "expanded_path": str(config_path)}],
+                   {QUICK_PRESET: "Medium"})
+    opts = {o["name"]: o for g in json.loads(config_path.read_text(encoding="utf-8"))["data"] for o in g["options"]}
+    assert (opts["QuickPresets"]["value"], opts["QuickPresets"]["index"]) == ("Medium", 2)
+    assert (opts["XESS"]["value"], opts["XESS"]["index"]) == ("Auto", 0)
+    assert (opts["AmbientOcclusion"]["value"], opts["AmbientOcclusion"]["index"]) == ("High", 3)

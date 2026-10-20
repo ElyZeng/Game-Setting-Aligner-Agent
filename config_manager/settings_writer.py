@@ -104,6 +104,26 @@ def _replace_xml_option(content: str, option_id: str, new_value: str) -> str:
 # then reading UserSettings.json) on 2026-10-20 (Intel Arc, XeSS). The game resets QuickPresets to "Custom"
 # on start when these do not match the chosen preset (#99). ResolutionScaling is left as the user set it.
 CYBERPUNK_PRESET_VALUES = {"Path Tracing": "Ray Tracing Overdrive"}
+
+# Index of the dynamic lists (no "values" array in the file); seen in UserSettings.json written by the game 2.31.
+CYBERPUNK_DYNAMIC_INDEX: Dict[str, Dict[str, int]] = {
+    "QuickPresets": {"Custom": 0, "Low": 1, "Medium": 2, "High": 3, "Ultra": 4, "Steam Deck": 5,
+                     "Ray Tracing Low": 6, "Ray Tracing Medium": 7, "Ray Tracing Ultra": 8, "Ray Tracing Overdrive": 9},
+    "XESS": {"Auto": 0, "Quality": 2, "Balanced": 3},
+    "FSR2": {"Auto": 0, "Balanced": 2},
+}
+
+
+def _set_list_value(opt: Dict[str, Any], value: Any) -> None:
+    """Set a Cyberpunk option value and keep its "index" in step (the game reads the index of list options)."""
+    opt["value"] = value
+    if "index" not in opt:
+        return
+    if isinstance(opt.get("values"), list) and value in opt["values"]:
+        opt["index"] = opt["values"].index(value)
+    elif str(value) in CYBERPUNK_DYNAMIC_INDEX.get(opt.get("name", ""), {}):
+        opt["index"] = CYBERPUNK_DYNAMIC_INDEX[opt["name"]][str(value)]
+
 CYBERPUNK_PRESET_MEMBERS: Dict[str, Dict[str, Any]] = {
     'High': {
         '/gameplay/performance/CrowdDensity': 'Medium',
@@ -520,7 +540,9 @@ def _write_cyberpunk(
     val = settings.get(QUICK_PRESET)
     if val is not None and val not in ("N/A", "—"):
         game_value = CYBERPUNK_PRESET_VALUES.get(val, val)
-        _set_option("QuickPresets", game_value, "/graphics/presets")
+        quick = _find_option("QuickPresets", "/graphics/presets")
+        if quick is not None:
+            _set_list_value(quick, game_value)
         # Write the preset's member settings too; otherwise the game resets QuickPresets to "Custom" (#99).
         for path, member_value in CYBERPUNK_PRESET_MEMBERS.get(game_value, {}).items():
             group_name, opt_name = path.rsplit("/", 1)
@@ -529,7 +551,7 @@ def _write_cyberpunk(
                     continue
                 for opt in group.get("options", []):
                     if opt.get("name") == opt_name:
-                        opt["value"] = member_value
+                        _set_list_value(opt, member_value)
 
     return json.dumps(data, indent=4, ensure_ascii=False)
 
