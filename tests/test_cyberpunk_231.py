@@ -420,3 +420,48 @@ def test_frame_limit_options_round_trip(tmp_path):
             [{"found": True, "content": written, "expanded_path": str(config_path)}],
         )
         assert settings[FRAME_LIMIT] == option
+
+def _preset_config():
+    from config_manager.settings_writer import CYBERPUNK_PRESET_MEMBERS
+    groups = {}
+    for members in CYBERPUNK_PRESET_MEMBERS.values():
+        for path in members:
+            group_name, name = path.rsplit("/", 1)
+            groups.setdefault(group_name, {})[name] = {"name": name, "value": "Custom-value"}
+    groups.setdefault("/graphics/presets", {})["QuickPresets"] = {"name": "QuickPresets", "value": "Custom"}
+    groups["/graphics/presets"]["ResolutionScaling"] = {"name": "ResolutionScaling", "value": "DLSS"}
+    return json.dumps({"data": [{"group_name": g, "options": list(o.values())} for g, o in groups.items()]})
+
+
+def test_quick_preset_writes_members_and_reads_back(tmp_path):
+    """#99: every offered preset writes the game value + its member settings and reads back unchanged."""
+    from config_manager.settings_writer import CYBERPUNK_PRESET_MEMBERS, CYBERPUNK_PRESET_VALUES
+    for option in setting_options_for_game("Cyberpunk 2077", QUICK_PRESET)[1:]:
+        content = _preset_config()
+        config_path = tmp_path / "UserSettings.json"
+        config_path.write_text(content, encoding="utf-8")
+        write_settings(
+            "Cyberpunk 2077",
+            [{"found": True, "content": content, "expanded_path": str(config_path)}],
+            {QUICK_PRESET: option},
+        )
+        written = config_path.read_text(encoding="utf-8")
+        data = json.loads(written)["data"]
+        values = {f"{g['group_name']}/{o['name']}": o["value"] for g in data for o in g["options"]}
+        game_value = CYBERPUNK_PRESET_VALUES.get(option, option)
+        assert values["/graphics/presets/QuickPresets"] == game_value
+        assert game_value in CYBERPUNK_PRESET_MEMBERS, option
+        for path, value in CYBERPUNK_PRESET_MEMBERS[game_value].items():
+            assert values[path] == value, (option, path)
+        assert values["/graphics/presets/ResolutionScaling"] == "DLSS"  # the upscaler is left alone
+        settings = extract_key_settings(
+            "Cyberpunk 2077",
+            [{"found": True, "content": written, "expanded_path": str(config_path)}],
+        )
+        assert settings[QUICK_PRESET] == option
+
+
+def test_quick_preset_options_match_the_game():
+    """#99: only presets that exist in Cyberpunk 2077 2.31 are offered."""
+    assert setting_options_for_game("Cyberpunk 2077", QUICK_PRESET)[1:] == [
+        "Low", "Medium", "High", "Ultra", "Ray Tracing Low", "Ray Tracing Medium", "Ray Tracing Ultra", "Path Tracing"]

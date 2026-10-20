@@ -459,8 +459,8 @@ QUICK_PRESET_OPTIONS: Dict[str, List[str]] = {
         "Medium",
         "High",
         "Ultra",
+        "Ray Tracing Low",
         "Ray Tracing Medium",
-        "Ray Tracing High",
         "Ray Tracing Ultra",
         "Path Tracing",
     ],
@@ -601,7 +601,9 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     # Quick Preset — stored under /graphics/presets/QuickPresets
     qp = options_map.get("/graphics/presets/QuickPresets") or options_map.get("QuickPresets")
     if qp is not None:
-        r[QUICK_PRESET] = str(qp.get("value", "Custom"))
+        # The game stores Path Tracing as "Ray Tracing Overdrive" (#99).
+        value = str(qp.get("value", "Custom"))
+        r[QUICK_PRESET] = {"Ray Tracing Overdrive": "Path Tracing"}.get(value, value)
 
     return r
 
