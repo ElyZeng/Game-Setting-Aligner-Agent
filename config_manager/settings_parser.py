@@ -542,7 +542,8 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     if fps_on is not None:
         on = fps_on.get("value", False)
         limit = fps_val.get("value", "") if fps_val else ""
-        r[FRAME_LIMIT] = f"{limit}" if on else "Off"
+        # Same format as setting_options_for_game ("30 FPS"), so a written option reads back unchanged (#100).
+        r[FRAME_LIMIT] = (f"{limit} FPS" if limit not in ("", None) else "On") if on else "Off"
 
     # Dynamic Resolution
     drs = options_map.get("DynamicResolutionScaling")

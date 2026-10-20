@@ -55,7 +55,7 @@ def test_reads_current_maximum_fps_value():
         [{"found": True, "content": content, "expanded_path": "UserSettings.json"}],
     )
 
-    assert settings["frame_limit"] == "114"
+    assert settings["frame_limit"] == "114 FPS"
 
 
 def test_cyberpunk_frame_limit_options_use_off_label():
@@ -398,3 +398,25 @@ def test_writes_quick_preset_by_value(tmp_path):
 
     option = json.loads(config_path.read_text(encoding="utf-8"))["data"][0]["options"][0]
     assert option["value"] == "High"
+
+
+def test_frame_limit_options_round_trip(tmp_path):
+    """#100: every offered frame_limit option reads back as the same string after a write."""
+    for option in setting_options_for_game("Cyberpunk 2077", FRAME_LIMIT)[1:]:
+        content = _config([
+            {"name": "MaximumFPS_OnOff", "value": False},
+            {"name": "MaximumFPS_Value", "value": 86},
+        ])
+        config_path = tmp_path / "UserSettings.json"
+        config_path.write_text(content, encoding="utf-8")
+        write_settings(
+            "Cyberpunk 2077",
+            [{"found": True, "content": content, "expanded_path": str(config_path)}],
+            {FRAME_LIMIT: option},
+        )
+        written = config_path.read_text(encoding="utf-8")
+        settings = extract_key_settings(
+            "Cyberpunk 2077",
+            [{"found": True, "content": written, "expanded_path": str(config_path)}],
+        )
+        assert settings[FRAME_LIMIT] == option
