@@ -27,6 +27,8 @@ from .settings_parser import (
     desktop_display_mode,
     BLACK_MYTH_SCALABILITY_KEYS,
     FORZA_PRESET_SIGNATURES,
+    forza_refresh_rate,
+    forza_v52_frame_rate_labels,
     F1_PRESET_SIGNATURES,
 )
 QUICK_PRESET = "quick_preset"
@@ -536,13 +538,27 @@ def _write_forza_xml(
         result = _replace_xml_attr(result, "PresentInterval", "value", "1" if val == "On" else "0")
 
     # Frame Limit
+    version_52 = re.search(r'<UserConfig\b[^>]*\bVersion="52"', content) is not None
     val = settings.get(FRAME_LIMIT)
     if val is not None:
-        fr_map = {"30 FPS": "0", "40 FPS": "1", "60 FPS": "2", "120 FPS": "3", "Unlimited": "4"}
-        if re.search(r'<UserConfig\b[^>]*\bVersion="52"', content):
-            fr_map = {"20 FPS": "1", "30 FPS": "2", "60 FPS": "3", "Unlimited": "4"}
-        fv = fr_map.get(val, "4")
+        if version_52:
+            # FH6: FrameRate is refresh / 4, 3, 2, 1 (0..3) or 4 = Unlocked; the refresh is in the file.
+            labels = forza_v52_frame_rate_labels(forza_refresh_rate(content))
+            if val not in labels:
+                raise ValueError(f"Unsupported Forza frame rate {val!r} (offered: {', '.join(labels)})")
+            if val == "Unlimited":
+                # The game offers "Unlocked (variable)" only with VSync Off.
+                if settings.get(VSYNC) == "On":
+                    raise ValueError("Forza Unlimited frame rate requires VSync Off")
+                result = _replace_xml_option(result, "VSync", "0")
+            fv = str(labels.index(val))
+        else:
+            fr_map = {"30 FPS": "0", "40 FPS": "1", "60 FPS": "2", "120 FPS": "3", "Unlimited": "4"}
+            fv = fr_map.get(val, "4")
         result = _replace_xml_option(result, "FrameRate", fv)
+    elif version_52 and settings.get(VSYNC) == "On" and re.search(r'<option\s+id="FrameRate"\s+value="4"', result):
+        # Turning VSync On in the game changes "Unlocked" to the refresh rate (enum 3).
+        result = _replace_xml_option(result, "FrameRate", "3")
 
     # Dynamic Resolution
     val = settings.get(DYNAMIC_RESOLUTION)
