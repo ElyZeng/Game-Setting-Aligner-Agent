@@ -153,9 +153,34 @@ SETTING_OPTIONS: Dict[str, List[str]] = {
     ],
 }
 
+# Forza Horizon 6 (UserConfig Version="52") stores FrameRate as a fraction of the display refresh rate:
+# 0..3 = refresh / 4, 3, 2, 1 and 4 = "Unlocked (variable)", which the game only offers with VSync Off.
+# The refresh rate is in the same file (<MonitorRefreshPeriod value="0.006944"/> = 1/144 s).
+FORZA_V52_FRAME_RATE_DIVISORS = (4, 3, 2, 1)
+FORZA_DEFAULT_REFRESH_RATE = 60
+
+
+def forza_refresh_rate(content: Optional[str]) -> int:
+    """Display refresh rate recorded by Forza in UserConfigSelections (60 Hz when absent)."""
+    match = re.search(r'<MonitorRefreshPeriod\b[^>]*\bvalue="([^"]*)"', content or "")
+    try:
+        period = float(match.group(1)) if match else 0.0
+    except ValueError:
+        period = 0.0
+    if period <= 0:
+        return FORZA_DEFAULT_REFRESH_RATE
+    return max(1, int(round(1.0 / period)))
+
+
+def forza_v52_frame_rate_labels(refresh_rate: Optional[int]) -> List[str]:
+    """FrameRate enum labels for one refresh rate, index = enum value."""
+    hz = refresh_rate if refresh_rate and refresh_rate > 0 else FORZA_DEFAULT_REFRESH_RATE
+    return [f"{int(round(hz / divisor))} FPS" for divisor in FORZA_V52_FRAME_RATE_DIVISORS] + ["Unlimited"]
+
+
 FORZA_SETTING_OPTIONS: Dict[str, List[str]] = {
     SCREEN_MODE: ["—", "Fullscreen", "Windowed"],
-    FRAME_LIMIT: ["—", "20 FPS", "30 FPS", "60 FPS", "Unlimited"],
+    FRAME_LIMIT: ["—", *forza_v52_frame_rate_labels(FORZA_DEFAULT_REFRESH_RATE)],
     UPSCALING: ["—", "Off", "DLSS", "FSR", "XeSS"],
     QUICK_PRESET: ["—", "Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
 }
@@ -412,6 +437,11 @@ def setting_options_for_game(
                 "XeSS": ["Ultra Quality Plus", "Ultra Quality", "Quality", "Balanced", "Performance", "Ultra Performance"],
             }
             return ["—", *modes.get(upscaling_method or "", [])]
+        if key == FRAME_LIMIT:
+            hz = refresh_rate
+            if not hz:
+                _, hz = desktop_display_mode()
+            return ["—", *forza_v52_frame_rate_labels(hz)]
         if key in FORZA_SETTING_OPTIONS:
             return FORZA_SETTING_OPTIONS[key]
     if "cyberpunk" in game_name.casefold():
@@ -914,7 +944,8 @@ def _parse_forza_xml(content: str) -> Dict[str, Optional[str]]:
     if fr is not None:
         fr_map = {"0": "30 FPS", "1": "40 FPS", "2": "60 FPS", "3": "120 FPS", "4": "Unlimited"}
         if re.search(r'<UserConfig\b[^>]*\bVersion="52"', content):
-            fr_map = {"1": "20 FPS", "2": "30 FPS", "3": "60 FPS", "4": "Unlimited"}
+            labels = forza_v52_frame_rate_labels(forza_refresh_rate(content))
+            fr_map = {str(index): label for index, label in enumerate(labels)}
         r[FRAME_LIMIT] = fr_map.get(fr, f"Preset {fr}")
 
     # Dynamic Resolution
