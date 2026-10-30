@@ -489,8 +489,8 @@ QUICK_PRESET_OPTIONS: Dict[str, List[str]] = {
         "Medium",
         "High",
         "Ultra",
+        "Ray Tracing Low",
         "Ray Tracing Medium",
-        "Ray Tracing High",
         "Ray Tracing Ultra",
         "Path Tracing",
     ],
@@ -572,7 +572,8 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     if fps_on is not None:
         on = fps_on.get("value", False)
         limit = fps_val.get("value", "") if fps_val else ""
-        r[FRAME_LIMIT] = f"{limit}" if on else "Off"
+        # Same format as setting_options_for_game ("30 FPS"), so a written option reads back unchanged (#100).
+        r[FRAME_LIMIT] = (f"{limit} FPS" if limit not in ("", None) else "On") if on else "Off"
 
     # Dynamic Resolution
     drs = options_map.get("DynamicResolutionScaling")
@@ -630,7 +631,9 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     # Quick Preset — stored under /graphics/presets/QuickPresets
     qp = options_map.get("/graphics/presets/QuickPresets") or options_map.get("QuickPresets")
     if qp is not None:
-        r[QUICK_PRESET] = str(qp.get("value", "Custom"))
+        # The game stores Path Tracing as "Ray Tracing Overdrive" (#99).
+        value = str(qp.get("value", "Custom"))
+        r[QUICK_PRESET] = {"Ray Tracing Overdrive": "Path Tracing"}.get(value, value)
 
     return r
 
