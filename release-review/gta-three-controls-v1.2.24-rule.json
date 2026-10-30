@@ -1,0 +1,32 @@
+[
+  {
+    "game": "Grand Theft Auto V Enhanced",
+    "platform": "Steam",
+    "version": "1.0.1158.16",
+    "fingerprint": "ae546c85292b9a5579d04044a24de8a29a69769b4d3a4185b598463a93b10896",
+    "status": "write_candidate",
+    "config_patterns": ["settings.xml"],
+    "supported_settings": [
+      "vsync",
+      "frame_limit",
+      "frame_generation",
+      "resolution",
+      "screen_mode",
+      "upscaling",
+      "upscaling_mode",
+      "quick_preset"
+    ],
+    "supported_values": {
+      "vsync": ["Off", "On"],
+      "frame_limit": ["Unlimited", "30 FPS", "40 FPS", "45 FPS", "60 FPS", "72 FPS", "75 FPS", "90 FPS", "105 FPS", "120 FPS"],
+      "frame_generation": ["AMD FSR 3", "Off"],
+      "resolution": ["1920x1080", "1600x900"],
+      "screen_mode": ["Fullscreen", "Borderless Windowed", "Borderless Fullscreen"],
+      "upscaling": ["Off", "Sampling", "FSR 1", "FSR 3"],
+      "upscaling_mode": ["1/2", "2/3", "3/4", "5/6", "5/4", "3/2", "7/4", "2/1", "5/2", "Quality", "Performance", "Balanced", "Native AA"],
+      "quick_preset": ["Lowest", "High", "High with Ray Tracing", "Very High", "Very High with Ray Tracing", "Maximum with Ray Tracing"]
+    },
+    "reader_id": "gta-enhanced-xml-reader",
+    "writer_id": "gta-enhanced-xml-writer"
+  }
+]

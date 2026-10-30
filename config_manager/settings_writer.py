@@ -27,6 +27,8 @@ from .settings_parser import (
     desktop_display_mode,
     BLACK_MYTH_SCALABILITY_KEYS,
     FORZA_PRESET_SIGNATURES,
+    forza_refresh_rate,
+    forza_v52_frame_rate_labels,
     F1_PRESET_SIGNATURES,
 )
 QUICK_PRESET = "quick_preset"
@@ -99,6 +101,298 @@ def _replace_xml_option(content: str, option_id: str, new_value: str) -> str:
 
 
 # ── Cyberpunk 2077 Writer ────────────────────────────────────────────
+
+# Cyberpunk 2077 2.31 Quick Preset members, captured from the game itself (Settings > Graphics > Quick Preset,
+# then reading UserSettings.json) on 2026-10-20 (Intel Arc, XeSS). The game resets QuickPresets to "Custom"
+# on start when these do not match the chosen preset (#99). ResolutionScaling is left as the user set it.
+CYBERPUNK_PRESET_VALUES = {"Path Tracing": "Ray Tracing Overdrive"}
+
+# Index of the dynamic lists (no "values" array in the file); seen in UserSettings.json written by the game 2.31.
+CYBERPUNK_DYNAMIC_INDEX: Dict[str, Dict[str, int]] = {
+    "QuickPresets": {"Custom": 0, "Low": 1, "Medium": 2, "High": 3, "Ultra": 4, "Steam Deck": 5,
+                     "Ray Tracing Low": 6, "Ray Tracing Medium": 7, "Ray Tracing Ultra": 8, "Ray Tracing Overdrive": 9},
+    "XESS": {"Auto": 0, "Quality": 2, "Balanced": 3},
+    "FSR2": {"Auto": 0, "Balanced": 2},
+}
+
+
+def _set_list_value(opt: Dict[str, Any], value: Any) -> None:
+    """Set a Cyberpunk option value and keep its "index" in step (the game reads the index of list options)."""
+    opt["value"] = value
+    if "index" not in opt:
+        return
+    if isinstance(opt.get("values"), list) and value in opt["values"]:
+        opt["index"] = opt["values"].index(value)
+    elif str(value) in CYBERPUNK_DYNAMIC_INDEX.get(opt.get("name", ""), {}):
+        opt["index"] = CYBERPUNK_DYNAMIC_INDEX[opt["name"]][str(value)]
+
+CYBERPUNK_PRESET_MEMBERS: Dict[str, Dict[str, Any]] = {
+    'High': {
+        '/gameplay/performance/CrowdDensity': 'Medium',
+        '/graphics/advanced/AmbientOcclusion': 'High',
+        '/graphics/advanced/Anisotropy': 16,
+        '/graphics/advanced/CascadedShadowsRange': 'High',
+        '/graphics/advanced/CascadedShadowsResolution': 'High',
+        '/graphics/advanced/ColorPrecision': 'High',
+        '/graphics/advanced/DistantShadowsResolution': 'High',
+        '/graphics/advanced/LODPreset': 'High',
+        '/graphics/advanced/LocalShadowsQuality': 'High',
+        '/graphics/advanced/MaxDynamicDecals': 'High',
+        '/graphics/advanced/MirrorQuality': 'High',
+        '/graphics/advanced/ScreenSpaceReflectionsQuality': 'High',
+        '/graphics/advanced/ShadowMeshQuality': 'High',
+        '/graphics/advanced/SubsurfaceScatteringQuality': 'High',
+        '/graphics/advanced/VolumetricCloudsQuality': 'High',
+        '/graphics/advanced/VolumetricFogResolution': 'High',
+        '/graphics/basic/ChromaticAberration': False,
+        '/graphics/basic/DepthOfField': True,
+        '/graphics/basic/FilmGrain': True,
+        '/graphics/basic/MotionBlur': 'High',
+        '/graphics/performance/CrowdDensity': 'Medium',
+        '/graphics/presets/FSR2': 'Auto',
+        '/graphics/presets/TextureQuality': 'High',
+        '/graphics/presets/XESS': 'Quality',
+        '/graphics/raytracing/RayTracedLighting': 'Off',
+        '/graphics/raytracing/RayTracedLocalShadows': False,
+        '/graphics/raytracing/RayTracedPathTracing': False,
+        '/graphics/raytracing/RayTracedPathTracingForPhotoMode': False,
+        '/graphics/raytracing/RayTracedReflections': False,
+        '/graphics/raytracing/RayTracedSunShadows': False,
+        '/graphics/raytracing/RayTracing': False,
+    },
+    'Low': {
+        '/gameplay/performance/CrowdDensity': 'Low',
+        '/graphics/advanced/AmbientOcclusion': 'Low',
+        '/graphics/advanced/Anisotropy': 4,
+        '/graphics/advanced/CascadedShadowsRange': 'Medium',
+        '/graphics/advanced/CascadedShadowsResolution': 'Medium',
+        '/graphics/advanced/ColorPrecision': 'Medium',
+        '/graphics/advanced/DistantShadowsResolution': 'Low',
+        '/graphics/advanced/LODPreset': 'Low',
+        '/graphics/advanced/LocalShadowsQuality': 'Low',
+        '/graphics/advanced/MaxDynamicDecals': 'Low',
+        '/graphics/advanced/MirrorQuality': 'Low',
+        '/graphics/advanced/ScreenSpaceReflectionsQuality': 'Low',
+        '/graphics/advanced/ShadowMeshQuality': 'Low',
+        '/graphics/advanced/SubsurfaceScatteringQuality': 'Low',
+        '/graphics/advanced/VolumetricCloudsQuality': 'Medium',
+        '/graphics/advanced/VolumetricFogResolution': 'Low',
+        '/graphics/basic/ChromaticAberration': False,
+        '/graphics/basic/DepthOfField': False,
+        '/graphics/basic/FilmGrain': False,
+        '/graphics/basic/MotionBlur': 'Off',
+        '/graphics/performance/CrowdDensity': 'Low',
+        '/graphics/presets/FSR2': 'Auto',
+        '/graphics/presets/TextureQuality': 'Low',
+        '/graphics/presets/XESS': 'Auto',
+        '/graphics/raytracing/RayTracedLighting': 'Off',
+        '/graphics/raytracing/RayTracedLocalShadows': False,
+        '/graphics/raytracing/RayTracedPathTracing': False,
+        '/graphics/raytracing/RayTracedPathTracingForPhotoMode': False,
+        '/graphics/raytracing/RayTracedReflections': False,
+        '/graphics/raytracing/RayTracedSunShadows': False,
+        '/graphics/raytracing/RayTracing': False,
+    },
+    'Medium': {
+        '/gameplay/performance/CrowdDensity': 'Low',
+        '/graphics/advanced/AmbientOcclusion': 'High',
+        '/graphics/advanced/Anisotropy': 8,
+        '/graphics/advanced/CascadedShadowsRange': 'Medium',
+        '/graphics/advanced/CascadedShadowsResolution': 'Medium',
+        '/graphics/advanced/ColorPrecision': 'Medium',
+        '/graphics/advanced/DistantShadowsResolution': 'High',
+        '/graphics/advanced/LODPreset': 'Medium',
+        '/graphics/advanced/LocalShadowsQuality': 'Medium',
+        '/graphics/advanced/MaxDynamicDecals': 'Medium',
+        '/graphics/advanced/MirrorQuality': 'Medium',
+        '/graphics/advanced/ScreenSpaceReflectionsQuality': 'Medium',
+        '/graphics/advanced/ShadowMeshQuality': 'Medium',
+        '/graphics/advanced/SubsurfaceScatteringQuality': 'Medium',
+        '/graphics/advanced/VolumetricCloudsQuality': 'Medium',
+        '/graphics/advanced/VolumetricFogResolution': 'High',
+        '/graphics/basic/ChromaticAberration': False,
+        '/graphics/basic/DepthOfField': False,
+        '/graphics/basic/FilmGrain': False,
+        '/graphics/basic/MotionBlur': 'Low',
+        '/graphics/performance/CrowdDensity': 'Low',
+        '/graphics/presets/FSR2': 'Auto',
+        '/graphics/presets/TextureQuality': 'Medium',
+        '/graphics/presets/XESS': 'Auto',
+        '/graphics/raytracing/RayTracedLighting': 'Off',
+        '/graphics/raytracing/RayTracedLocalShadows': False,
+        '/graphics/raytracing/RayTracedPathTracing': False,
+        '/graphics/raytracing/RayTracedPathTracingForPhotoMode': False,
+        '/graphics/raytracing/RayTracedReflections': False,
+        '/graphics/raytracing/RayTracedSunShadows': False,
+        '/graphics/raytracing/RayTracing': False,
+    },
+    'Ray Tracing Low': {
+        '/gameplay/performance/CrowdDensity': 'Medium',
+        '/graphics/advanced/AmbientOcclusion': 'High',
+        '/graphics/advanced/Anisotropy': 16,
+        '/graphics/advanced/CascadedShadowsRange': 'High',
+        '/graphics/advanced/CascadedShadowsResolution': 'High',
+        '/graphics/advanced/ColorPrecision': 'High',
+        '/graphics/advanced/DistantShadowsResolution': 'High',
+        '/graphics/advanced/LODPreset': 'High',
+        '/graphics/advanced/LocalShadowsQuality': 'High',
+        '/graphics/advanced/MaxDynamicDecals': 'Ultra',
+        '/graphics/advanced/MirrorQuality': 'High',
+        '/graphics/advanced/ScreenSpaceReflectionsQuality': 'Ultra',
+        '/graphics/advanced/ShadowMeshQuality': 'High',
+        '/graphics/advanced/SubsurfaceScatteringQuality': 'High',
+        '/graphics/advanced/VolumetricCloudsQuality': 'Ultra',
+        '/graphics/advanced/VolumetricFogResolution': 'Ultra',
+        '/graphics/basic/ChromaticAberration': True,
+        '/graphics/basic/DepthOfField': True,
+        '/graphics/basic/FilmGrain': True,
+        '/graphics/basic/MotionBlur': 'High',
+        '/graphics/performance/CrowdDensity': 'Medium',
+        '/graphics/presets/FSR2': 'Auto',
+        '/graphics/presets/TextureQuality': 'High',
+        '/graphics/presets/XESS': 'Auto',
+        '/graphics/raytracing/RayTracedLighting': 'Off',
+        '/graphics/raytracing/RayTracedLocalShadows': True,
+        '/graphics/raytracing/RayTracedPathTracing': False,
+        '/graphics/raytracing/RayTracedPathTracingForPhotoMode': False,
+        '/graphics/raytracing/RayTracedReflections': False,
+        '/graphics/raytracing/RayTracedSunShadows': False,
+        '/graphics/raytracing/RayTracing': True,
+    },
+    'Ray Tracing Medium': {
+        '/gameplay/performance/CrowdDensity': 'Medium',
+        '/graphics/advanced/AmbientOcclusion': 'High',
+        '/graphics/advanced/Anisotropy': 16,
+        '/graphics/advanced/CascadedShadowsRange': 'High',
+        '/graphics/advanced/CascadedShadowsResolution': 'High',
+        '/graphics/advanced/ColorPrecision': 'High',
+        '/graphics/advanced/DistantShadowsResolution': 'High',
+        '/graphics/advanced/LODPreset': 'High',
+        '/graphics/advanced/LocalShadowsQuality': 'High',
+        '/graphics/advanced/MaxDynamicDecals': 'Ultra',
+        '/graphics/advanced/MirrorQuality': 'High',
+        '/graphics/advanced/ScreenSpaceReflectionsQuality': 'Ultra',
+        '/graphics/advanced/ShadowMeshQuality': 'High',
+        '/graphics/advanced/SubsurfaceScatteringQuality': 'High',
+        '/graphics/advanced/VolumetricCloudsQuality': 'Ultra',
+        '/graphics/advanced/VolumetricFogResolution': 'Ultra',
+        '/graphics/basic/ChromaticAberration': True,
+        '/graphics/basic/DepthOfField': True,
+        '/graphics/basic/FilmGrain': True,
+        '/graphics/basic/MotionBlur': 'High',
+        '/graphics/performance/CrowdDensity': 'Medium',
+        '/graphics/presets/FSR2': 'Auto',
+        '/graphics/presets/TextureQuality': 'High',
+        '/graphics/presets/XESS': 'Auto',
+        '/graphics/raytracing/RayTracedLighting': 'Medium',
+        '/graphics/raytracing/RayTracedLocalShadows': True,
+        '/graphics/raytracing/RayTracedPathTracing': False,
+        '/graphics/raytracing/RayTracedPathTracingForPhotoMode': False,
+        '/graphics/raytracing/RayTracedReflections': False,
+        '/graphics/raytracing/RayTracedSunShadows': True,
+        '/graphics/raytracing/RayTracing': True,
+    },
+    'Ray Tracing Overdrive': {
+        '/gameplay/performance/CrowdDensity': 'High',
+        '/graphics/advanced/AmbientOcclusion': 'High',
+        '/graphics/advanced/Anisotropy': 16,
+        '/graphics/advanced/CascadedShadowsRange': 'High',
+        '/graphics/advanced/CascadedShadowsResolution': 'High',
+        '/graphics/advanced/ColorPrecision': 'High',
+        '/graphics/advanced/DistantShadowsResolution': 'High',
+        '/graphics/advanced/LODPreset': 'High',
+        '/graphics/advanced/LocalShadowsQuality': 'High',
+        '/graphics/advanced/MaxDynamicDecals': 'Ultra',
+        '/graphics/advanced/MirrorQuality': 'High',
+        '/graphics/advanced/ScreenSpaceReflectionsQuality': 'Ultra',
+        '/graphics/advanced/ShadowMeshQuality': 'High',
+        '/graphics/advanced/SubsurfaceScatteringQuality': 'High',
+        '/graphics/advanced/VolumetricCloudsQuality': 'Ultra',
+        '/graphics/advanced/VolumetricFogResolution': 'Ultra',
+        '/graphics/basic/ChromaticAberration': True,
+        '/graphics/basic/DepthOfField': True,
+        '/graphics/basic/FilmGrain': True,
+        '/graphics/basic/MotionBlur': 'High',
+        '/graphics/performance/CrowdDensity': 'High',
+        '/graphics/presets/FSR2': 'Auto',
+        '/graphics/presets/TextureQuality': 'High',
+        '/graphics/presets/XESS': 'Auto',
+        '/graphics/raytracing/RayTracedLighting': 'Ultra',
+        '/graphics/raytracing/RayTracedLocalShadows': False,
+        '/graphics/raytracing/RayTracedPathTracing': True,
+        '/graphics/raytracing/RayTracedPathTracingForPhotoMode': True,
+        '/graphics/raytracing/RayTracedReflections': False,
+        '/graphics/raytracing/RayTracedSunShadows': True,
+        '/graphics/raytracing/RayTracing': False,
+    },
+    'Ray Tracing Ultra': {
+        '/gameplay/performance/CrowdDensity': 'High',
+        '/graphics/advanced/AmbientOcclusion': 'High',
+        '/graphics/advanced/Anisotropy': 16,
+        '/graphics/advanced/CascadedShadowsRange': 'High',
+        '/graphics/advanced/CascadedShadowsResolution': 'High',
+        '/graphics/advanced/ColorPrecision': 'High',
+        '/graphics/advanced/DistantShadowsResolution': 'High',
+        '/graphics/advanced/LODPreset': 'High',
+        '/graphics/advanced/LocalShadowsQuality': 'High',
+        '/graphics/advanced/MaxDynamicDecals': 'Ultra',
+        '/graphics/advanced/MirrorQuality': 'High',
+        '/graphics/advanced/ScreenSpaceReflectionsQuality': 'Ultra',
+        '/graphics/advanced/ShadowMeshQuality': 'High',
+        '/graphics/advanced/SubsurfaceScatteringQuality': 'High',
+        '/graphics/advanced/VolumetricCloudsQuality': 'Ultra',
+        '/graphics/advanced/VolumetricFogResolution': 'Ultra',
+        '/graphics/basic/ChromaticAberration': True,
+        '/graphics/basic/DepthOfField': True,
+        '/graphics/basic/FilmGrain': True,
+        '/graphics/basic/MotionBlur': 'High',
+        '/graphics/performance/CrowdDensity': 'High',
+        '/graphics/presets/FSR2': 'Auto',
+        '/graphics/presets/TextureQuality': 'High',
+        '/graphics/presets/XESS': 'Auto',
+        '/graphics/raytracing/RayTracedLighting': 'Ultra',
+        '/graphics/raytracing/RayTracedLocalShadows': True,
+        '/graphics/raytracing/RayTracedPathTracing': False,
+        '/graphics/raytracing/RayTracedPathTracingForPhotoMode': False,
+        '/graphics/raytracing/RayTracedReflections': True,
+        '/graphics/raytracing/RayTracedSunShadows': True,
+        '/graphics/raytracing/RayTracing': True,
+    },
+    'Ultra': {
+        '/gameplay/performance/CrowdDensity': 'High',
+        '/graphics/advanced/AmbientOcclusion': 'High',
+        '/graphics/advanced/Anisotropy': 16,
+        '/graphics/advanced/CascadedShadowsRange': 'High',
+        '/graphics/advanced/CascadedShadowsResolution': 'High',
+        '/graphics/advanced/ColorPrecision': 'High',
+        '/graphics/advanced/DistantShadowsResolution': 'High',
+        '/graphics/advanced/LODPreset': 'High',
+        '/graphics/advanced/LocalShadowsQuality': 'High',
+        '/graphics/advanced/MaxDynamicDecals': 'Ultra',
+        '/graphics/advanced/MirrorQuality': 'High',
+        '/graphics/advanced/ScreenSpaceReflectionsQuality': 'Ultra',
+        '/graphics/advanced/ShadowMeshQuality': 'High',
+        '/graphics/advanced/SubsurfaceScatteringQuality': 'High',
+        '/graphics/advanced/VolumetricCloudsQuality': 'Ultra',
+        '/graphics/advanced/VolumetricFogResolution': 'Ultra',
+        '/graphics/basic/ChromaticAberration': True,
+        '/graphics/basic/DepthOfField': True,
+        '/graphics/basic/FilmGrain': True,
+        '/graphics/basic/MotionBlur': 'High',
+        '/graphics/performance/CrowdDensity': 'High',
+        '/graphics/presets/FSR2': 'Auto',
+        '/graphics/presets/TextureQuality': 'High',
+        '/graphics/presets/XESS': 'Quality',
+        '/graphics/raytracing/RayTracedLighting': 'Off',
+        '/graphics/raytracing/RayTracedLocalShadows': False,
+        '/graphics/raytracing/RayTracedPathTracing': False,
+        '/graphics/raytracing/RayTracedPathTracingForPhotoMode': False,
+        '/graphics/raytracing/RayTracedReflections': False,
+        '/graphics/raytracing/RayTracedSunShadows': False,
+        '/graphics/raytracing/RayTracing': False,
+    },
+}
+
 
 def _write_cyberpunk(
     content: str, settings: Dict[str, Optional[str]]
@@ -247,7 +541,19 @@ def _write_cyberpunk(
     # Quick Preset ? write QuickPresets field under /graphics/presets
     val = settings.get(QUICK_PRESET)
     if val is not None and val not in ("N/A", "—"):
-        _set_option("QuickPresets", val, "/graphics/presets")
+        game_value = CYBERPUNK_PRESET_VALUES.get(val, val)
+        quick = _find_option("QuickPresets", "/graphics/presets")
+        if quick is not None:
+            _set_list_value(quick, game_value)
+        # Write the preset's member settings too; otherwise the game resets QuickPresets to "Custom" (#99).
+        for path, member_value in CYBERPUNK_PRESET_MEMBERS.get(game_value, {}).items():
+            group_name, opt_name = path.rsplit("/", 1)
+            for group in groups:
+                if group.get("group_name") != group_name:
+                    continue
+                for opt in group.get("options", []):
+                    if opt.get("name") == opt_name:
+                        _set_list_value(opt, member_value)
 
     return json.dumps(data, indent=4, ensure_ascii=False)
 
@@ -351,7 +657,7 @@ def _write_unreal_ini(
 
 
 def _write_black_myth_ini(
-    content: str, settings: Dict[str, Optional[str]]
+    content: str, settings: Dict[str, Optional[str]], *, benchmark: bool = False
 ) -> str:
     result = _write_unreal_ini(content, settings)
 
@@ -375,21 +681,27 @@ def _write_black_myth_ini(
         )
 
     upscaling = settings.get(UPSCALING)
-    upscaling_values = {"FSR3": "0", "XeSS": "1", "TSR": "3", "NXSR": "5"}
+    upscaling_values = (
+        {"FSR": "0", "XeSS": "1", "TSR": "3"}
+        if benchmark else
+        {"FSR3": "0", "XeSS": "1", "TSR": "3", "NXSR": "5"}
+    )
     if upscaling in upscaling_values:
         result = _replace_black_myth_ui_value(
             result, "SuperResolutionSampling", upscaling_values[upscaling]
         )
-        if upscaling != "XeSS":
+        if not benchmark and upscaling != "XeSS":
             result = _replace_black_myth_ui_value(result, "InsertFrame", "0")
 
     upscaling_mode = settings.get(UPSCALING_MODE)
     render_percentage: Optional[int] = None
+    update_desired_dimensions = True
     if upscaling_mode is not None:
-        percentage_match = re.search(r"\((\d{1,3})%\)\s*$", upscaling_mode)
+        percentage_pattern = r"(?:^|\()(\d{1,3})%\)?\s*$" if benchmark else r"\((\d{1,3})%\)\s*$"
+        percentage_match = re.search(percentage_pattern, upscaling_mode)
         if percentage_match:
             render_percentage = int(percentage_match.group(1))
-            if 1 <= render_percentage <= 100:
+            if (33 if benchmark else 1) <= render_percentage <= 100:
                 result = _replace_ini_value(
                     result, "sg.ResolutionQuality", str(render_percentage)
                 )
@@ -399,6 +711,7 @@ def _write_black_myth_ini(
         current_percentage = _parse_ini_kv(result).get("sg.ResolutionQuality", "100")
         if current_percentage and current_percentage.isdigit():
             render_percentage = int(current_percentage)
+            update_desired_dimensions = not benchmark
 
     if render_percentage is not None:
         ini_values = _parse_ini_kv(result)
@@ -408,10 +721,11 @@ def _write_black_myth_ini(
             render_width = int(int(width) * render_percentage / 100)
             render_height = int(int(height) * render_percentage / 100)
             image_quality = round(int(height) * render_percentage / 100)
-            for key in ("DesiredScreenWidth", "LastUserConfirmedDesiredScreenWidth"):
-                result = _replace_ini_value(result, key, str(render_width))
-            for key in ("DesiredScreenHeight", "LastUserConfirmedDesiredScreenHeight"):
-                result = _replace_ini_value(result, key, str(render_height))
+            if update_desired_dimensions:
+                for key in ("DesiredScreenWidth", "LastUserConfirmedDesiredScreenWidth"):
+                    result = _replace_ini_value(result, key, str(render_width))
+                for key in ("DesiredScreenHeight", "LastUserConfirmedDesiredScreenHeight"):
+                    result = _replace_ini_value(result, key, str(render_height))
             result = _replace_black_myth_ui_value(
                 result, "ImageQuality", str(image_quality)
             )
@@ -424,7 +738,8 @@ def _write_black_myth_ini(
     if frame_generation in frame_generation_values:
         stored_frame_generation = (
             frame_generation_values[frame_generation]
-            if current_upscaling == "1"
+            if (benchmark and current_upscaling in {"0", "3"})
+            or (not benchmark and current_upscaling == "1")
             else "0"
         )
         result = _replace_black_myth_ui_value(
@@ -433,7 +748,7 @@ def _write_black_myth_ini(
 
     quick_preset = settings.get(QUICK_PRESET)
     quick_preset_values = {
-        "Custom": "0",
+        "Custom": "6" if benchmark else "0",
         "Low": "1",
         "Medium": "2",
         "High": "3",
@@ -527,13 +842,27 @@ def _write_forza_xml(
         result = _replace_xml_attr(result, "PresentInterval", "value", "1" if val == "On" else "0")
 
     # Frame Limit
+    version_52 = re.search(r'<UserConfig\b[^>]*\bVersion="52"', content) is not None
     val = settings.get(FRAME_LIMIT)
     if val is not None:
-        fr_map = {"30 FPS": "0", "40 FPS": "1", "60 FPS": "2", "120 FPS": "3", "Unlimited": "4"}
-        if re.search(r'<UserConfig\b[^>]*\bVersion="52"', content):
-            fr_map = {"20 FPS": "1", "30 FPS": "2", "60 FPS": "3", "Unlimited": "4"}
-        fv = fr_map.get(val, "4")
+        if version_52:
+            # FH6: FrameRate is refresh / 4, 3, 2, 1 (0..3) or 4 = Unlocked; the refresh is in the file.
+            labels = forza_v52_frame_rate_labels(forza_refresh_rate(content))
+            if val not in labels:
+                raise ValueError(f"Unsupported Forza frame rate {val!r} (offered: {', '.join(labels)})")
+            if val == "Unlimited":
+                # The game offers "Unlocked (variable)" only with VSync Off.
+                if settings.get(VSYNC) == "On":
+                    raise ValueError("Forza Unlimited frame rate requires VSync Off")
+                result = _replace_xml_option(result, "VSync", "0")
+            fv = str(labels.index(val))
+        else:
+            fr_map = {"30 FPS": "0", "40 FPS": "1", "60 FPS": "2", "120 FPS": "3", "Unlimited": "4"}
+            fv = fr_map.get(val, "4")
         result = _replace_xml_option(result, "FrameRate", fv)
+    elif version_52 and settings.get(VSYNC) == "On" and re.search(r'<option\s+id="FrameRate"\s+value="4"', result):
+        # Turning VSync On in the game changes "Unlocked" to the refresh rate (enum 3).
+        result = _replace_xml_option(result, "FrameRate", "3")
 
     # Dynamic Resolution
     val = settings.get(DYNAMIC_RESOLUTION)
@@ -668,13 +997,146 @@ def _write_f1_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
 
 # ── Grand Theft Auto V Enhanced XML Writer ──────────────────────────
 
+GTA_ENHANCED_SCALING_MODES = {
+    "1": ("SamplingMode", {
+        "1/2": "0", "2/3": "1", "3/4": "2", "5/6": "3", "5/4": "4",
+        "3/2": "5", "7/4": "6", "2/1": "7", "5/2": "8",
+    }),
+    "2": ("fsrQuality", {"Ultra Quality": "1", "Quality": "2", "Balanced": "3", "Performance": "4"}),
+    "3": ("fsr3Quality", {"Performance": "0", "Balanced": "1", "Quality": "2", "Native AA": "3"}),
+}
+
+GTA_ENHANCED_PRESET_ORDER = (
+    "Lowest", "High", "High with Ray Tracing", "Very High",
+    "Very High with Ray Tracing", "Maximum with Ray Tracing",
+)
+GTA_ENHANCED_PRESET_FIELDS = {
+    ("graphics", "Tessellation", "value"): ("0", "2", "3", "3", "3", "3"),
+    ("graphics", "LodScale", "value"): ("0.000000", "0.000000", "1.000000", "1.000000", "1.000000", "1.000000"),
+    ("graphics", "ShadowQuality", "value"): ("1", "2", "2", "3", "3", "3"),
+    ("graphics", "ReflectionQuality", "value"): ("1", "2", "1", "3", "2", "3"),
+    ("graphics", "SSAOType", "value"): ("1", "2", "2", "2", "2", "2"),
+    ("graphics", "AnisotropicFiltering", "value"): ("4", "4", "4", "16", "16", "16"),
+    ("graphics", "TextureQuality", "value"): ("0", "2", "2", "2", "2", "2"),
+    ("graphics", "ParticleQuality", "value"): ("0", "3", "3", "3", "3", "3"),
+    ("graphics", "WaterQuality", "value"): ("0", "2", "3", "3", "3", "3"),
+    ("graphics", "GrassQuality", "value"): ("0", "2", "2", "3", "3", "3"),
+    ("graphics", "ShaderQuality", "value"): ("0", "2", "2", "2", "2", "2"),
+    ("graphics", "Shadow_SoftShadows", "value"): ("1", "2", "2", "3", "3", "3"),
+    ("graphics", "UltraShadows_Enabled", "value"): ("false", "false", "false", "true", "false", "false"),
+    ("graphics", "Shadow_LongShadows", "value"): ("false", "false", "false", "false", "false", "true"),
+    ("graphics", "Lighting_FogVolumes", "value"): ("false", "false", "true", "true", "true", "true"),
+    ("graphics", "CityDensity", "value"): ("0.000000", "0.900000", "1.000000", "1.000000", "1.000000", "1.000000"),
+    ("graphics", "PedVarietyMultiplier", "value"): ("0.800000", "0.900000", "1.000000", "1.000000", "1.000000", "1.000000"),
+    ("graphics", "VehicleVarietyMultiplier", "value"): ("0.800000", "0.900000", "1.000000", "1.000000", "1.000000", "1.000000"),
+    ("graphics", "PostFX", "value"): ("0", "2", "3", "3", "3", "3"),
+    ("graphics", "DoF", "value"): ("0", "1", "2", "2", "2", "2"),
+    ("graphics", "HdStreamingInFlight", "value"): ("false", "true", "true", "true", "true", "true"),
+    ("graphics", "MaxLodScale", "value"): ("0.000000", "0.000000", "0.000000", "0.000000", "0.000000", "1.000000"),
+    ("graphics", "LensFlare_HalfRes", "value"): ("true", "false", "false", "false", "false", "false"),
+    ("graphics", "LensArtefacts_HalfRes", "value"): ("true", "false", "false", "false", "false", "false"),
+    ("graphics", "Raytracing_Enabled", "value"): ("false", "false", "true", "false", "true", "true"),
+    ("graphics", "Raytracing_StaticBvhRadius", "value"): ("256.000000", "256.000000", "256.000000", "256.000000", "512.000000", "512.000000"),
+    ("graphics", "Raytracing_StaticBvhAngularThreshold", "value"): ("0.750000", "0.750000", "0.750000", "0.750000", "0.500000", "0.500000"),
+    ("graphics", "Raytracing_DynamicBvhRadius", "value"): ("64.000000", "64.000000", "64.000000", "64.000000", "128.000000", "128.000000"),
+    ("graphics", "Raytracing_DynamicBvhAngularThreshold", "value"): ("1.500000", "1.500000", "1.500000", "1.500000", "1.000000", "1.000000"),
+    ("graphics", "Raytracing_VehicleBvhRadius", "value"): ("256.000000", "256.000000", "256.000000", "256.000000", "512.000000", "512.000000"),
+    ("graphics", "Raytracing_TreeBvhRadius", "value"): ("256.000000", "256.000000", "256.000000", "256.000000", "512.000000", "512.000000"),
+    ("graphics", "Raytracing_GrassBvhEnabled", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "DeferredReflectionsEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredCubeReflectionsEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredWaterReflectionsEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredMirrorReflectionsEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredCubeReflectionsComputeEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredWaterReflectionsComputeEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "DeferredMirrorReflectionsComputeEnabled", "value"): ("false", "true", "false", "true", "true", "true"),
+    ("graphics", "RTShadows_Enabled", "value"): ("false", "false", "true", "false", "true", "true"),
+    ("graphics", "RTShadows_Quality", "value"): ("0", "0", "1", "0", "2", "3"),
+    ("graphics", "RTAmbientOcclusion_Enabled", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "RTAmbientOcclusion_Quality", "value"): ("0", "0", "0", "0", "2", "3"),
+    ("graphics", "RTReflection_Enabled", "value"): ("false", "false", "true", "false", "true", "true"),
+    ("graphics", "RTReflection_Quality", "value"): ("0", "0", "1", "0", "2", "3"),
+    ("graphics", "RTIndirectDiffuse_Enabled", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "RTIndirectDiffuse_Quality", "value"): ("0", "0", "0", "0", "2", "3"),
+    ("graphics", "RTCharacterShadow_Enabled", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "RTApplyAOToFillLights", "value"): ("false", "false", "false", "false", "true", "true"),
+    ("graphics", "RTReflection_FullRes_Enabled", "value"): ("false", "false", "false", "false", "false", "true"),
+    ("graphics", "PlayerHeadlightShadowsQuality", "value"): ("0", "0", "1", "2", "2", "3"),
+    ("graphics", "NetPlayerHeadlightsCastShadows", "value"): ("false", "false", "false", "true", "true", "true"),
+    ("graphics", "AllVehicleHeadlightShadowsQuality", "value"): ("0", "0", "0", "2", "2", "3"),
+    ("Presets", "PresetLevel", "value"): ("1", "2", "3", "4", "5", "6"),
+    ("Presets", "BVHQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTShadowQuality", "value"): ("0", "0", "1", "0", "2", "3"),
+    ("Presets", "RTReflectionQuality", "value"): ("0", "0", "1", "0", "2", "3"),
+    ("Presets", "RTDynamicQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTStaticQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTVehicleQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTTreeQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTGrassQuality", "value"): ("0", "0", "0", "0", "1", "1"),
+    ("Presets", "RTAOQuality", "value"): ("0", "0", "0", "0", "2", "3"),
+    ("Presets", "RTGIQuality", "value"): ("0", "0", "0", "0", "2", "3"),
+    ("Presets", "LightingQuality", "value"): ("0", "0", "1", "2", "2", "3"),
+    ("Presets", "PostFXQuality", "value"): ("0", "2", "3", "3", "3", "3"),
+    ("Presets", "ReflectionQuality", "value"): ("1", "2", "1", "3", "2", "3"),
+}
+
 GTA_ENHANCED_WRITE_CODES = {
     RESOLUTION: {"1920x1080": ("1920", "1080"), "1600x900": ("1600", "900")},
     SCREEN_MODE: {"Fullscreen": "0", "Borderless Windowed": "2", "Borderless Fullscreen": "3"},
     VSYNC: {"Off": "0", "On": "1"},
     FRAME_LIMIT: {"Unlimited": "0", **{f"{fps} FPS": str(fps) for fps in (30, 40, 45, 60, 72, 75, 90, 105, 120)}},
+    UPSCALING: {"Off": "0", "Sampling": "1", "FSR 1": "2", "FSR 3": "3"},
     FRAME_GENERATION: {"Off": "0", "AMD FSR 3": "2"},
+    UPSCALING_MODE: {
+        value: value for _, codes in GTA_ENHANCED_SCALING_MODES.values() for value in codes
+    },
+    QUICK_PRESET: {value: str(index + 1) for index, value in enumerate(GTA_ENHANCED_PRESET_ORDER)},
 }
+
+
+def _write_gta_enhanced_preset_xml(content: str, root: ET.Element, preset: str) -> str:
+    scaling = root.find("./graphics/ResScalingType")
+    sampling = root.find("./graphics/SamplingMode")
+    frame_generation = root.find("./graphics/FrameGenType")
+    if (
+        scaling is None or scaling.get("value") != "1"
+        or sampling is None or sampling.get("value") != "8"
+        or frame_generation is None or frame_generation.get("value") != "0"
+    ):
+        raise ValueError("GTA V Enhanced preset requires observed Sampling 5/2 and frame generation Off")
+
+    current_values = {}
+    for section, tag, attribute in GTA_ENHANCED_PRESET_FIELDS:
+        nodes = root.findall(f"./{section}/{tag}")
+        if len(nodes) != 1 or nodes[0].get(attribute) is None:
+            raise ValueError("Incomplete GTA V Enhanced source preset")
+        current_values[(section, tag, attribute)] = nodes[0].get(attribute)
+    sources = [
+        index for index in range(len(GTA_ENHANCED_PRESET_ORDER))
+        if all(current_values[field] == values[index] for field, values in GTA_ENHANCED_PRESET_FIELDS.items())
+    ]
+    if len(sources) != 1:
+        raise ValueError("Unsupported GTA V Enhanced source preset")
+    target = GTA_ENHANCED_PRESET_ORDER.index(preset)
+    if target == sources[0]:
+        raise ValueError("GTA V Enhanced preset already selected")
+
+    for section in ("graphics", "Presets"):
+        sections = list(re.finditer(rf"<{section}\b[^>]*>(.*?)</{section}>", content, re.DOTALL))
+        if len(sections) != 1:
+            raise ValueError("Unpatchable GTA V Enhanced preset section")
+        match = sections[0]
+        body = match.group(1)
+        for (parent, tag, attribute), values in GTA_ENHANCED_PRESET_FIELDS.items():
+            if parent != section:
+                continue
+            fields = list(re.finditer(rf'(<{tag}\b[^>]*\b{attribute}=")([^"]*)(")', body))
+            if len(fields) != 1 or fields[0].group(2) != current_values[(parent, tag, attribute)]:
+                raise ValueError("Unpatchable GTA V Enhanced preset field")
+            field = fields[0]
+            body = body[:field.start(2)] + values[target] + body[field.end(2):]
+        content = content[:match.start(1)] + body + content[match.end(1):]
+    return content
 
 
 def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) -> str:
@@ -686,6 +1148,11 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
     root = ET.fromstring(content)
     if root.tag != "Settings":
         raise ValueError("Unexpected GTA V Enhanced XML root")
+
+    if QUICK_PRESET in settings:
+        if set(settings) != {QUICK_PRESET}:
+            raise ValueError("GTA V Enhanced preset change must be atomic")
+        return _write_gta_enhanced_preset_xml(content, root, settings[QUICK_PRESET])
 
     if RESOLUTION in settings:
         mode = root.find("./video/Windowed")
@@ -701,6 +1168,42 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
         ):
             raise ValueError("GTA V Enhanced screen mode requires 1920x1080")
 
+    if UPSCALING in settings:
+        if set(settings) not in ({UPSCALING}, {UPSCALING, UPSCALING_MODE}):
+            raise ValueError("GTA V Enhanced method change must be atomic")
+        frame_generation = root.find("./graphics/FrameGenType")
+        if frame_generation is None or frame_generation.get("value") != "0":
+            raise ValueError("GTA V Enhanced method change requires frame generation Off")
+        current_method = root.find("./graphics/ResScalingType")
+        current_spec = GTA_ENHANCED_SCALING_MODES.get(current_method.get("value")) if current_method is not None else None
+        if current_spec is not None:
+            current_mode = root.find(f"./graphics/{current_spec[0]}")
+            if current_mode is None or current_mode.get("value") not in current_spec[1].values():
+                raise ValueError("GTA V Enhanced source method has unknown quality or scale")
+        method = GTA_ENHANCED_WRITE_CODES[UPSCALING][settings[UPSCALING]]
+        if method != "0":
+            mode_spec = GTA_ENHANCED_SCALING_MODES[method]
+            mode_node = root.find(f"./graphics/{mode_spec[0]}")
+            if mode_node is None or mode_node.get("value") not in mode_spec[1].values():
+                raise ValueError("GTA V Enhanced target method has unknown quality or scale")
+    mode_tag = None
+    mode_codes = None
+    if UPSCALING_MODE in settings:
+        scaling = root.find("./graphics/ResScalingType")
+        target_method = (
+            GTA_ENHANCED_WRITE_CODES[UPSCALING][settings[UPSCALING]]
+            if UPSCALING in settings else scaling.get("value") if scaling is not None else None
+        )
+        mode_spec = GTA_ENHANCED_SCALING_MODES.get(target_method)
+        if mode_spec is None or settings[UPSCALING_MODE] not in mode_spec[1]:
+            raise ValueError("Unsupported GTA V Enhanced upscaling mode for current method")
+        frame_generation = root.find("./graphics/FrameGenType")
+        if frame_generation is not None and frame_generation.get("value") != "0":
+            raise ValueError("GTA V Enhanced scaling mode change requires frame generation Off")
+        if target_method == "3" and frame_generation is None:
+            raise ValueError("GTA V Enhanced FSR 3 quality change requires frame generation Off")
+        mode_tag, mode_codes = mode_spec
+
     if FRAME_GENERATION in settings:
         scaling = root.find("./graphics/ResScalingType")
         quality = root.find("./graphics/fsr3Quality")
@@ -715,18 +1218,22 @@ def _write_gta_enhanced_xml(content: str, settings: Dict[str, Optional[str]]) ->
         ):
             raise ValueError("GTA V Enhanced frame generation requires FSR 3 Quality and inactive Sampling 1/2")
 
-    for key, parent, tag, component in (
+    patches = [
         (RESOLUTION, "video", "ScreenWidth", 0), (RESOLUTION, "video", "ScreenHeight", 1),
         (SCREEN_MODE, "video", "Windowed", None),
         (VSYNC, "video", "VSync", None), (FRAME_LIMIT, "video", "FrameLimit", None),
+        (UPSCALING, "graphics", "ResScalingType", None),
         (FRAME_GENERATION, "graphics", "FrameGenType", None),
-    ):
+    ]
+    if mode_tag is not None:
+        patches.append((UPSCALING_MODE, "graphics", mode_tag, None))
+    for key, parent, tag, component in patches:
         if key not in settings:
             continue
         node = root.find(f"./{parent}/{tag}")
         if node is None or len(root.findall(f".//{tag}")) != 1:
             raise ValueError(f"Missing or ambiguous GTA V Enhanced {tag} node")
-        codes = GTA_ENHANCED_WRITE_CODES[key]
+        codes = mode_codes if key == UPSCALING_MODE else GTA_ENHANCED_WRITE_CODES[key]
         known = (code[component] for code in codes.values()) if component is not None else codes.values()
         if node.get("value") not in known:
             raise ValueError(f"Unsupported GTA V Enhanced {tag} value")
@@ -904,8 +1411,8 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
         return "gta_enhanced_xml"
     if "cyberpunk" in name_lower:
         return "cyberpunk"
-    if ("black myth" in name_lower or "wukong" in name_lower) and "benchmark" not in name_lower:
-        return "black_myth"
+    if "black myth" in name_lower or "wukong" in name_lower:
+        return "black_myth_benchmark" if "benchmark" in name_lower else "black_myth"
     if "counter-strike" in name_lower or "cs2" in name_lower:
         return "cs2"
     if "forza" in name_lower:
@@ -993,12 +1500,15 @@ def write_settings(
     elif parser_type == "gta_enhanced_xml":
         results.append({"path": "", "status": "skipped", "detail": "GTA V Enhanced requires guarded Apply"})
 
-    elif parser_type == "black_myth":
+    elif parser_type in {"black_myth", "black_myth_benchmark"}:
         for cfg in readable:
             path = cfg["expanded_path"]
             if Path(path).name.casefold() == "gameusersettings.ini":
                 try:
-                    new_content = _write_black_myth_ini(cfg["content"], to_write)
+                    new_content = _write_black_myth_ini(
+                        cfg["content"], to_write,
+                        benchmark=parser_type == "black_myth_benchmark",
+                    )
                     _safe_write(path, new_content)
                     results.append({"path": path, "status": "ok", "detail": "Black Myth settings written"})
                 except Exception as e:

@@ -424,7 +424,7 @@ class PCGamingWikiClient:
         self._session = requests.Session() if requests else None
         if self._session:
             self._session.headers.update(
-                {"User-Agent": "GameSettingAligner/1.0 (https://github.com/ElyZeng/Game-setting-aligner)"}
+                {"User-Agent": "GameSettingAlignerAgent/1.0 (https://github.com/ElyZeng/Game-Setting-Aligner-Agent)"}
             )
         self._cache: Dict[str, Any] = {}
         self._cache_path = cache_path or _CACHE_FILE

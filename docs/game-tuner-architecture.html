@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game Tuner Architecture</title>
+  <style>
+    :root {
+      --ink: #102a43;
+      --muted: #52606d;
+      --paper: #f4f7f5;
+      --line: #9fb3c8;
+      --entry: #17324d;
+      --entry-border: #8ecae6;
+      --core: #315c4c;
+      --core-border: #b7e4c7;
+      --data: #6b4f3a;
+      --data-border: #f4c095;
+      --accent: #d97745;
+      --white: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    }
+
+    .page {
+      width: min(1480px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 44px 0 56px;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 26px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Georgia, serif;
+      font-size: clamp(2rem, 4vw, 3.6rem);
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+
+    .subtitle {
+      max-width: 540px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: end;
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend i {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+
+    .legend .entry { background: var(--entry); }
+    .legend .core { background: var(--core); }
+    .legend .data { background: var(--data); }
+
+    .diagram {
+      position: relative;
+      width: 1080px;
+      min-width: 1080px;
+      height: 810px;
+      overflow: hidden;
+      border: 1px solid #d9e2ec;
+      border-radius: 18px;
+      background:
+        linear-gradient(rgba(159, 179, 200, 0.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(159, 179, 200, 0.12) 1px, transparent 1px),
+        #fbfcfb;
+      background-size: 32px 32px;
+      box-shadow: 0 18px 44px rgba(16, 42, 67, 0.1);
+    }
+
+    .band {
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      border: 1px solid rgba(16, 42, 67, 0.12);
+      border-radius: 14px;
+      pointer-events: none;
+    }
+
+    .band::before {
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      padding: 0 8px;
+      background: #fbfcfb;
+      color: var(--muted);
+      content: attr(data-label);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .band.entry-band { top: 28px; height: 132px; }
+    .band.discover-band { top: 188px; height: 168px; }
+    .band.core-band { top: 382px; height: 248px; }
+    .band.data-band { top: 654px; height: 126px; }
+
+    .node {
+      position: absolute;
+      z-index: 2;
+      width: 178px;
+      min-height: 72px;
+      padding: 14px 15px;
+      border: 1px solid;
+      border-radius: 10px;
+      color: var(--white);
+      box-shadow: 0 8px 18px rgba(16, 42, 67, 0.14);
+    }
+
+    .node h2 {
+      margin: 0 0 5px;
+      font-size: 0.98rem;
+      line-height: 1.15;
+    }
+
+    .node p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 0.74rem;
+      line-height: 1.35;
+    }
+
+    .entry { background: var(--entry); border-color: var(--entry-border); }
+    .core { background: var(--core); border-color: var(--core-border); }
+    .data { background: var(--data); border-color: var(--data-border); }
+
+    .gui { top: 61px; left: 150px; }
+    .cli { top: 61px; left: 402px; }
+    .api { top: 61px; left: 654px; }
+
+    .scanner { top: 232px; left: 90px; }
+    .wiki { top: 232px; left: 342px; }
+    .detect { top: 232px; left: 594px; }
+
+    .reader { top: 426px; left: 75px; }
+    .parser { top: 426px; left: 285px; }
+    .model { top: 426px; left: 495px; }
+    .writer { top: 426px; left: 705px; }
+    .verify { top: 530px; left: 495px; }
+    .backup { top: 530px; left: 705px; }
+
+    .files { top: 679px; left: 285px; }
+    .registry { top: 679px; left: 705px; }
+
+    .connectors {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .connectors path,
+    .connectors line {
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .connectors .entry-flow {
+      stroke: #8ecae6;
+      marker-end: url(#arrow-entry);
+    }
+
+    .connectors .discover-flow {
+      stroke: #7aa6b8;
+      marker-end: url(#arrow-discover);
+    }
+
+    .connectors .core-flow {
+      stroke: #5da88d;
+      marker-end: url(#arrow-core);
+    }
+
+    .connectors .data-flow {
+      stroke: #b8845d;
+      marker-end: url(#arrow-data);
+    }
+
+    .connectors .write-flow {
+      stroke: var(--accent);
+      stroke-width: 2.5;
+      marker-end: url(#arrow-write);
+    }
+
+    .caption {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+
+    .caption strong { color: var(--ink); }
+
+    @media (max-width: 1150px) {
+      body { overflow-x: auto; }
+      .page { margin-left: 20px; margin-right: 20px; }
+      header { align-items: start; flex-direction: column; }
+      .legend { justify-content: start; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .page { width: 1480px; padding: 20px; }
+      .diagram { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>Game Tuner Architecture</h1>
+        <p class="subtitle">One shared configuration core connects multiple entry points to game-specific readers, parsers, writers, and guarded write verification.</p>
+      </div>
+      <div class="legend" aria-label="Diagram legend">
+        <span><i class="entry"></i> Entry points</span>
+        <span><i class="core"></i> Shared core</span>
+        <span><i class="data"></i> Local game data</span>
+      </div>
+    </header>
+
+    <section class="diagram" aria-label="Game Tuner architecture diagram">
+      <div class="band entry-band" data-label="User and automation entry points"></div>
+      <div class="band discover-band" data-label="Discover installed games and configuration locations"></div>
+      <div class="band core-band" data-label="Config manager: normalize, change, verify, and write"></div>
+      <div class="band data-band" data-label="Local game data"></div>
+
+      <article class="node entry gui"><h2>GUI</h2><p>CustomTkinter desktop app</p></article>
+      <article class="node entry cli"><h2>CLI</h2><p>JSON commands for automation</p></article>
+      <article class="node entry api"><h2>External API</h2><p>HTTP JSON interface</p></article>
+
+      <article class="node core scanner"><h2>Platform scanners</h2><p>Steam / Epic / GOG</p></article>
+      <article class="node core wiki"><h2>PCGamingWiki API</h2><p>Known configuration paths</p></article>
+      <article class="node core detect"><h2>Config detection</h2><p>Files and Windows Registry</p></article>
+
+      <article class="node core reader"><h2>Reader</h2><p>JSON / XML / INI / VCFG</p></article>
+      <article class="node core parser"><h2>Settings parser</h2><p>Game-specific adapters</p></article>
+      <article class="node core model"><h2>Normalized settings</h2><p>Common keys and options</p></article>
+      <article class="node core writer"><h2>Settings writer</h2><p>Game-specific adapters</p></article>
+      <article class="node core verify"><h2>Verification registry</h2><p>Version, fingerprint, consent</p></article>
+      <article class="node core backup"><h2>Backup and write</h2><p>Apply approved changes</p></article>
+
+      <article class="node data files"><h2>Game config files</h2><p>UserSettings.json / XML / INI / VCFG</p></article>
+      <article class="node data registry"><h2>Windows Registry</h2><p>Registry-backed settings</p></article>
+
+      <svg class="connectors" viewBox="0 0 1080 810" role="img" aria-label="Directional data flow arrows">
+        <defs>
+          <marker id="arrow-entry" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#8ecae6"></path>
+          </marker>
+          <marker id="arrow-discover" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#7aa6b8"></path>
+          </marker>
+          <marker id="arrow-core" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#5da88d"></path>
+          </marker>
+          <marker id="arrow-data" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#b8845d"></path>
+          </marker>
+          <marker id="arrow-write" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#d97745"></path>
+          </marker>
+        </defs>
+        <!-- Entry points into the shared flow -->
+        <path class="entry-flow" d="M239 133 V180 H584 V426"></path>
+        <path class="entry-flow" d="M491 133 V180 H584 V426"></path>
+        <path class="entry-flow" d="M743 133 V180 H584 V426"></path>
+        <!-- Discovery -->
+        <path class="discover-flow" d="M179 304 V350 H164 V426"></path>
+        <path class="discover-flow" d="M431 304 V350 H164 V426"></path>
+        <path class="discover-flow" d="M683 304 V350 H164 V426"></path>
+        <!-- Read path -->
+        <path class="core-flow" d="M253 462 H285"></path>
+        <path class="core-flow" d="M463 462 H495"></path>
+        <path class="core-flow" d="M673 462 H705"></path>
+        <!-- User changes and guarded write path -->
+        <path class="write-flow" d="M584 498 V530"></path>
+        <path class="write-flow" d="M673 566 H705"></path>
+        <path class="write-flow" d="M794 498 V530"></path>
+        <path class="write-flow" d="M794 602 V654 H794 V679"></path>
+        <!-- Local data into detection -->
+        <path class="data-flow" d="M374 679 V642 H683 V304"></path>
+        <path class="data-flow" d="M794 679 V642 H683 V304"></path>
+      </svg>
+    </section>
+
+    <div class="caption">
+      <span><strong>The key idea:</strong> different game formats become one normalized settings model.</span>
+      <span><strong>Write path:</strong> change -&gt; verify -&gt; backup -&gt; apply.</span>
+    </div>
+  </main>
+</body>
+</html>

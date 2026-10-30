@@ -1,7 +1,7 @@
 Game: Black Myth: Wukong Benchmark Tool
 Platform: Steam
 Issue: #34
-Phase: Benchmark-only Read/Output validation
+Phase: Benchmark-only interactive Read validation complete
 
 中文指示
 1. 啟動 Benchmark Tool 並儲存一次 Graphics Settings。
@@ -11,6 +11,62 @@ Phase: Benchmark-only Read/Output validation
 5. Recommended 原則上只應選取 GameUserSettings.ini；只有宣告欄位確實需要時才加入 Engine.ini。
 6. 維護者確認獨立 Version、Fingerprint、Parser Fixture 及自動測試後，才可發布 Benchmark 專屬 write_candidate。
 7. Rule 生效後才能在 03-write-evidence 與 04-backup-restore 逐項測試 Write、Persistence、Read-back、Backup 與 Restore。
+8. 2026-09-23 已確認 Steam App ID 3132990、Steam build 15365379；Game Version unknown blocker 已解除。
+9. 修正後 parser baseline：1920x1080、Borderless Windowed、V-Sync On、120 FPS、Dynamic Resolution N/A、TSR、Upscaling Mode 65%、Frame Generation On、Cinematic。
+10. 依 game-read-validation skill 一次只在 Benchmark GUI 變更一個設定，儲存並完全退出後再讀取。
+11. V-Sync On → Off 已通過：parser 只將 V-Sync 讀為 Off，其餘八個 schema 欄位保持不變。
+12. V-Sync Off → On 已通過並回到 baseline；兩個 V-Sync 值均已完成 parser 取樣。
+13. Resolution 1920x1080 → 1600x900 已通過；Borderless Windowed 換算正確，且只有 GameUserSettings.ini 改變。
+14. Resolution 1600x900 → 1920x1080 已通過；GameUserSettings.ini 精確回到 baseline hash。
+15. Benchmark Screen Mode 只有 Borderless Windowed 與 Windowed，沒有 Fullscreen；Borderless → Windowed parser 取樣已通過。
+16. Windowed → Borderless 已通過；九項 parser baseline 與 structural fingerprint 均恢復，但 GameUserSettings.ini byte hash 不同，留待 Write restore 階段嚴格檢查。
+17. Frame Limit 120 FPS → 60 FPS 已通過；只有 GameUserSettings.ini 改變，其餘八項穩定。
+18. Frame Limit 60 FPS → 120 FPS 已通過；九項 parser baseline 與 structural fingerprint 均恢復。
+19. Benchmark Tool UI 沒有 Dynamic Resolution 選項；parser N/A 已確認正確。
+20. Live UI 與 config 證實 Benchmark 的 SuperResolutionSampling=3 是 TSR（不是 XeSS），InsertFrame=1 是 On；parser 與 regression fixture 已修正。此時尚缺的 persisted transition 與 XeSS raw mapping 已由後續第 21、24、35 項補齊。
+21. TSR → FSR 已通過；Benchmark 的 SuperResolutionSampling=0 是 FSR，InsertFrame=1 仍為 On，只有 GameUserSettings.ini 改變且其他 schema 欄位穩定。
+22. FSR 下 Frame Generation On → Off 已通過；InsertFrame=0，只有 GameUserSettings.ini 改變且其他 schema 欄位穩定。
+23. FSR 下 Frame Generation Off → On 已通過；InsertFrame=1，且 GameUserSettings.ini 精確回到先前 FSR+On hash。
+24. FSR → XeSS 已通過；Benchmark 的 SuperResolutionSampling=1 是 XeSS。XeSS 下 Frame Generation UI 不可用，即使 InsertFrame 保留 stale value 1，parser 也必須回傳 N/A。
+25. 畫面可見「超採樣清晰度 65」控制項；後續第 26、27 項已證實其為百分比設定，而非 N/A。
+26. 超採樣清晰度 65 → 50 已通過；值直接寫入 sg.ResolutionQuality=50，parser 已修正為 Upscaling Mode 50%，只有 GameUserSettings.ini 改變且其他 schema 欄位穩定。
+27. 超採樣清晰度 50 → 65 已通確認；raw sg.ResolutionQuality=65，且 GameUserSettings.ini 精確回到先前 XeSS+65 hash。更早的 raw 66 屬於不同狀態，不是 UI 轉換規則。
+28. Quick Preset Cinematic → Low 已通過；QualityLevel=1，所有一般 scalability 群組與 Ray Tracing 均為 0，parser 回傳 Low，且其他 schema 欄位穩定。
+29. Quick Preset Low → Medium 已通過；QualityLevel=2，十個一般 scalability 群組為 1、Ray Tracing 保持 0。另有 24 個空 INI 從 0 bytes 正規化為單一換行，無 section/key，非語意 drift。
+30. Quick Preset Medium → High 已通過；QualityLevel=3，十個一般 scalability 群組為 2、Ray Tracing 獨立保持 0，parser 回傳 High，其他 schema 欄位穩定。
+31. Quick Preset High → Very High 已通過；QualityLevel=4，十個一般 scalability 群組為 3、Ray Tracing 獨立保持 0，parser 回傳 Very High，其他 schema 欄位穩定。
+32. Quick Preset Very High → Cinematic 已通過；QualityLevel=5，十個一般 scalability 群組為 4、Ray Tracing 獨立保持 0，parser 回傳 Cinematic，並精確恢復先前 XeSS+65+Cinematic 的 GameUserSettings.ini hash。
+33. 只將視野距離從 Cinematic 降為 Very High 後，QualityLevel=6、parser 回傳 Custom，其他一般群組維持 4、Ray Tracing 維持 0，且其餘 schema 欄位穩定。
+34. Quick Preset Custom → Cinematic 已通過；QualityLevel=5、十個一般群組全回到 4、Ray Tracing 保持 0，九項 parser 與 structural fingerprint 均恢復，GameUserSettings.ini 精確回到 baseline hash。
+35. Upscaling XeSS → TSR 已通過；SuperResolutionSampling=3，保留的 InsertFrame=1 再次生效，parser 回傳 TSR/On，其他 schema 欄位穩定。
+36. TSR 下 Frame Generation On → Off 已通過；InsertFrame=0，parser 回傳 Off，其他 schema 欄位與 structural fingerprint 穩定。
+37. TSR 下 Frame Generation Off → On 已通過；InsertFrame=1，parser 回傳 On，且 GameUserSettings.ini 精確回到先前 TSR+On hash。
+38. Read validation 完成：九個 advertised fields 均有 Pass 或已證實的 N/A，所有有限 enum 與 dependency 已取樣，100 個 parser tests 通過，三次連續 live read 的九項值、hash 與 fingerprint 完全一致。
+39. Benchmark 專屬 writer、離線 guarded candidate tests 與 client 0.08.17 已完成；全套 350 tests 通過。
+40. verification-rules-v1.2.20 draft 已生成並通過 checksum；exact rule 為 Steam build 15365379 + fingerprint 3bb965...21f9，狀態 write_candidate。
+41. Candidate 暫時 allowlist resolution、screen_mode、vsync、frame_limit、upscaling、frame_generation、quick_preset。upscaling_mode 在 slider 上下界完成取樣前排除。
+42. 使用者已確認 Benchmark 關閉、Steam Cloud 不介入並授權真實寫入。獨立 raw v2 baseline 包含 26/26 檔案，無變更 restore smoke test 的所有 SHA-256 均精確一致。
+43. Real-file matrix 21/21 Pass：每案 guarded apply 與 parser read-back 通過，僅 GameUserSettings.ini 改變，每案後 26/26 hashes 與九項 baseline 均精確恢復。
+44. 遊戲內 persistence 案例 `vsync-off` Pass：使用者確認 UI 顯示 Off；退出後 parser 仍為 Off 且其他八項不變；26/26 baseline hashes 精確恢復，V-Sync 已回復 On。
+45. 遊戲內 persistence 案例 `screen-mode-windowed` Pass：使用者確認 UI 顯示 Windowed；退出後 parser 仍為 Windowed 且其他八項不變；26/26 baseline hashes 精確恢復，模式已回復 Borderless Windowed。
+46. `resolution-1600x900` 的 UI 與退出後解析度均為 1600x900，但退出後 Upscaling Mode 從 65% 變為 54%。26/26 baseline hashes 已精確恢復；需以無寫入 baseline 啟動控制組判斷是否為遊戲每次啟動的正規化行為。
+47. 無寫入控制組 Pass：UI 為 1920x1080、Borderless Windowed、TSR 65%；退出後九項 parser 值與 26/26 hashes 均完全不變，因此 54% 不是一般啟動正規化。
+48. 根因為 benchmark resolution-only writer 以新輸出高度 900 重算 ImageQuality=585，遊戲相對 1080p 解讀為約 54%。已修正為 resolution-only 不改既有 upscaling metadata；focused writer tests 21/21 Pass，等待 1600x900 persistence retest。
+49. 第一次 retest 顯示 1600x900、Borderless Windowed，但 slider 為 78%；完整保留 DesiredScreen=1248x702 會讓 UI 以 1248/1600 計算 78%。第二版修正改為 DesiredScreen=1040x585 並保留 ImageQuality=702；focused tests 21/21 Pass，等待程式關閉後 restore 與再測。
+50. 第二次 retest 的 UI 仍為 78%。程式開啟時 live file 顯示 DesiredScreen=1040x585、ImageQuality=702、sg.ResolutionQuality=54.1666985；證明 UI slider 使用 ImageQuality/輸出高度，而 stored percentage 使用 DesiredScreen/1080p。第三版修正保留 DesiredScreen=1248x702 並寫 ImageQuality=585；focused tests 21/21 Pass。
+51. 第三次 retest 的 UI 已確認正確：1600x900、Borderless Windowed、slider 65%。程式開啟時 live file 仍為 sg.ResolutionQuality=65、DesiredScreen=1248x702、ImageQuality=585，等待退出後 persistence 與 restore 驗證。
+52. 第三次 retest 完整 Pass：退出後仍為 1600x900 與 65%，metadata 保持 sg.ResolutionQuality=65、DesiredScreen=1248x702、ImageQuality=585；26/26 baseline hashes 精確恢復，最終回到 1920x1080 與 65%。
+53. 遊戲內 persistence 案例 `frame-limit-60-fps` Pass：使用者確認 UI 為 60；退出後 parser 仍為 60 FPS 且其他八項不變；26/26 baseline hashes 精確恢復，幀率上限已回復 120 FPS。
+54. `fsr-frame-generation-on` Pass：UI 與退出後 parser 均為 FSR、Frame Generation On、65%；raw 0/1 穩定；26/26 baseline hashes 精確恢復，已回到 TSR。
+55. `xess-frame-generation-na` Pass：UI 確認 XeSS、Frame Generation disabled、65%；退出後 parser 為 XeSS、N/A、65%；26/26 baseline hashes 精確恢復，已回到 TSR 與 Frame Generation On。
+56. `quick-preset-low` Pass：UI 確認 Low、Ray Tracing Off、65%；退出後 Quick Preset 仍為 Low 且其他 parser 值穩定；26/26 baseline hashes 精確恢復，已回到 Cinematic。
+57. Benchmark 超採樣清晰度滑桿 UI 範圍為 33–100。最低值 33 儲存退出後，raw sg.ResolutionQuality=33.3333015，parser 顯示 Ultra Performance (33%)；只有 GameUserSettings.ini 改變，其餘八項維持不變。26/26 baseline hashes 已精確恢復。
+58. 最高值 100 儲存退出後，raw sg.ResolutionQuality=100，parser 顯示 Native AA (100%)；只有 GameUserSettings.ini 改變，其餘八項維持不變。遊戲移除 DesiredScreenWidth/DesiredScreenHeight，結構 fingerprint 由 3bb9659ab9341d238ae74e2f5b96e148ff065b8e3fd76155fe3a74eef94221f9 變為 1198ec49c02647f504ab71f395df6d73ec36bfc650abad34094549c48a482dd1。26/26 baseline hashes 已精確恢復，原 fingerprint 亦回復；100 狀態的 guarded write 需要另行評估，upscaling_mode 仍不在 allowlist。
+59. 2026-09-24 再次從遊戲設定 100 並退出，parser 為 Native AA (100%)，fingerprint 為 1198ec49c02647f504ab71f395df6d73ec36bfc650abad34094549c48a482dd1。現有規則回報 candidate/fingerprint_mismatch；測試寫入 V-Sync Off 被 write_not_allowed:fingerprint_mismatch 拒絕，拒絕前後 26/26 hashes 不變。獨立備份 restore 後 26/26 hashes、原 fingerprint 及 Balanced (65%) 均恢復。本地 registry 在 baseline 回報 write_candidate；未調整規則或 allowlist。
+60. 已取得 Benchmark 關閉、Steam Cloud 不介入及 Upscaling Mode 真實寫入測試授權。使用獨立本機候選規則，從原 fingerprint 的 baseline 分別 guarded write 33/50/100：3/3 apply、parser read-back、只改 GameUserSettings.ini、逐案 26/26 hashes restore 均 Pass。本機安裝 checksum-valid v1.2.21 測試 bundle，僅 Benchmark 新增 upscaling_mode 並保持 write_candidate；其他規則不變。仍須 GUI 與遊戲內 persistence 驗證，100 的遊戲存檔狀態仍不匹配原 fingerprint。
+61. GUI 寫入 Upscaling Mode Performance (50%) 後，測試者確認 Benchmark 畫面顯示 50% 並正常退出。退出後 parser 仍為 Performance (50%)，其他八項設定和原 fingerprint 不變，僅 GameUserSettings.ini 的 hash 不同。獨立 baseline 已恢復 26/26 hashes、九項設定與原 fingerprint，現為 Balanced (65%)；新欄位仍維持本機 write_candidate。
+62. GUI 寫入 Upscaling Mode Ultra Performance (33%) 後，測試者確認 Benchmark 畫面顯示 33% 並完整退出。退出後 parser 仍為 Ultra Performance (33%)，其他八項設定與原 fingerprint 不變，僅 GameUserSettings.ini 的 hash 不同。獨立 baseline 已恢復 26/26 hashes、九項設定與原 fingerprint，現為 Balanced (65%)；仍待 100% GUI persistence 測試，新欄位維持本機 write_candidate。
+63. GUI 寫入 Upscaling Mode Native AA (100%) 後，測試者確認 Benchmark 畫面顯示 100%、儲存並完整退出。退出後 parser 仍為 Native AA (100%)，其他八項設定不變，僅 GameUserSettings.ini 的 hash 不同；遊戲移除 DesiredScreenWidth/Height，fingerprint 變為先前取樣的 100% 狀態，規則回報 candidate/fingerprint_mismatch，仍禁止此狀態的後續寫入。獨立 baseline 已恢復 26/26 hashes、九項設定與原 fingerprint，現為 Balanced (65%)。33/50/100 的 GUI persistence 均 Pass，新欄位仍維持本機 write_candidate。
 
 English Instructions
 1. Launch the Benchmark Tool and save Graphics Settings once.
@@ -20,6 +76,64 @@ English Instructions
 5. Recommended should normally select only GameUserSettings.ini; include Engine.ini only when a declared field requires it.
 6. Wait for a Benchmark-specific exact Version/Fingerprint write_candidate before any Write test.
 7. Capture per-setting persistence, read-back, backup, and restore evidence after the rule is active.
+8. On 2026-09-23, Steam App ID 3132990 and Steam build 15365379 were confirmed; the unknown-version blocker is resolved.
+9. Corrected parser baseline: 1920x1080, Borderless Windowed, V-Sync On, 120 FPS, Dynamic Resolution N/A, TSR, Upscaling Mode 65%, Frame Generation On, and Cinematic.
+10. Follow the game-read-validation skill: change only one Benchmark GUI setting, save, and fully exit before each parser read.
+11. V-Sync On-to-Off passed: the parser changed only V-Sync to Off while the other eight schema fields remained stable.
+12. V-Sync Off-to-On passed and restored the baseline; both V-Sync values now have parser samples.
+13. Resolution 1920x1080-to-1600x900 passed; Borderless Windowed conversion was correct and only GameUserSettings.ini changed.
+14. Resolution 1600x900-to-1920x1080 passed; GameUserSettings.ini returned to the exact baseline hash.
+15. Benchmark Screen Mode exposes only Borderless Windowed and Windowed, not Fullscreen; the Borderless-to-Windowed parser sample passed.
+16. Windowed-to-Borderless passed; all nine parser baseline values and the structural fingerprint were restored, but the GameUserSettings.ini byte hash differed and must be checked strictly during write-restore validation.
+17. Frame Limit 120 FPS-to-60 FPS passed; only GameUserSettings.ini changed and the other eight fields remained stable.
+18. Frame Limit 60 FPS-to-120 FPS passed; all nine parser baseline values and the structural fingerprint were restored.
+19. The Benchmark Tool UI has no Dynamic Resolution control; parser N/A is confirmed correct.
+20. The live UI and config prove that benchmark SuperResolutionSampling=3 is TSR, not XeSS, and InsertFrame=1 is On; the parser and regression fixture were corrected. The persisted transition and XeSS raw mapping that were missing at this point were completed by later items 21, 24, and 35.
+21. TSR-to-FSR passed; benchmark SuperResolutionSampling=0 is FSR, InsertFrame=1 remained On, only GameUserSettings.ini changed, and the other schema fields stayed stable.
+22. Frame Generation On-to-Off under FSR passed; InsertFrame=0, only GameUserSettings.ini changed, and the other schema fields stayed stable.
+23. Frame Generation Off-to-On under FSR passed; InsertFrame=1 and GameUserSettings.ini returned to the exact prior FSR+On hash.
+24. FSR-to-XeSS passed; benchmark SuperResolutionSampling=1 is XeSS. The Frame Generation UI is unavailable under XeSS, so parser must return N/A even when InsertFrame retains stale value 1.
+25. A visible Super Sampling Clarity control is set to 65; later items 26 and 27 prove it is a percentage setting rather than N/A.
+26. Super Sampling Clarity 65-to-50 passed; the value is stored directly as sg.ResolutionQuality=50, parser now reports Upscaling Mode 50%, only GameUserSettings.ini changed, and the other schema fields stayed stable.
+27. Super Sampling Clarity 50-to-65 passed; raw sg.ResolutionQuality=65 and GameUserSettings.ini returned to the exact prior XeSS+65 hash. The earlier raw 66 belonged to a different state and is not a UI conversion rule.
+28. Quick Preset Cinematic-to-Low passed; QualityLevel=1, all general scalability groups and Ray Tracing were 0, parser returned Low, and the other schema fields stayed stable.
+29. Quick Preset Low-to-Medium passed; QualityLevel=2, the ten general scalability groups were 1, and Ray Tracing remained 0. Twenty-four empty INIs were normalized from zero bytes to one newline with no sections or keys, so this is not semantic drift.
+30. Quick Preset Medium-to-High passed; QualityLevel=3, the ten general scalability groups were 2, Ray Tracing independently remained 0, parser returned High, and the other schema fields stayed stable.
+31. Quick Preset High-to-Very High passed; QualityLevel=4, the ten general scalability groups were 3, Ray Tracing independently remained 0, parser returned Very High, and the other schema fields stayed stable.
+32. Quick Preset Very High-to-Cinematic passed; QualityLevel=5, the ten general scalability groups were 4, Ray Tracing independently remained 0, parser returned Cinematic, and the prior XeSS+65+Cinematic GameUserSettings.ini hash was restored exactly.
+33. Lowering only View Distance from Cinematic to Very High persisted QualityLevel=6; parser returned Custom, the other general groups remained 4, Ray Tracing remained 0, and the unrelated schema fields stayed stable.
+34. Quick Preset Custom-to-Cinematic passed; QualityLevel=5, all ten general groups returned to 4, Ray Tracing remained 0, all nine parser values and the structural fingerprint were restored, and GameUserSettings.ini returned to the exact baseline hash.
+35. Upscaling XeSS-to-TSR passed; SuperResolutionSampling=3, retained InsertFrame=1 became effective again, parser returned TSR/On, and the other schema fields stayed stable.
+36. Frame Generation On-to-Off under TSR passed; InsertFrame=0, parser returned Off, and the other schema fields and structural fingerprint stayed stable.
+37. Frame Generation Off-to-On under TSR passed; InsertFrame=1, parser returned On, and GameUserSettings.ini returned to the exact prior TSR+On hash.
+38. Read validation is complete: all nine advertised fields have a Pass or verified N/A, all finite enums and dependencies were sampled, 100 parser tests passed, and three consecutive live reads produced identical settings, hash, and fingerprint.
+39. The benchmark-specific writer, offline guarded candidate tests, and client 0.08.17 are complete; the full suite passes 350 tests.
+40. The verification-rules-v1.2.20 draft was generated with a valid checksum; its exact rule matches Steam build 15365379 and fingerprint 3bb965...21f9 with write_candidate status.
+41. The candidate currently allows resolution, screen_mode, vsync, frame_limit, upscaling, frame_generation, and quick_preset. Upscaling Mode is excluded until the slider bounds are sampled.
+42. The user confirmed the Benchmark was closed, Steam Cloud would not interfere, and real writes were authorized. The independent raw v2 baseline contained all 26 files, and the no-change restore smoke test reproduced every SHA-256 hash exactly.
+43. The real-file matrix passed 21/21 cases: guarded apply and parser read-back passed, only GameUserSettings.ini changed, and all 26 hashes plus all nine baseline values were restored exactly after every case.
+44. In-game persistence case `vsync-off` passed: the tester confirmed Off in the UI; after exit the parser still read Off and the other eight fields were stable; all 26 baseline hashes were restored exactly and V-Sync is back to On.
+45. In-game persistence case `screen-mode-windowed` passed: the tester confirmed Windowed in the UI; after exit the parser still read Windowed and the other eight fields were stable; all 26 baseline hashes were restored exactly and the mode is back to Borderless Windowed.
+46. For `resolution-1600x900`, both the UI and post-exit resolution were 1600x900, but Upscaling Mode changed from 65% to 54% after exit. All 26 baseline hashes were restored exactly; a no-write baseline launch control is required to determine whether this is normal startup normalization.
+47. The no-write control passed: the UI showed 1920x1080, Borderless Windowed, and TSR 65%; after exit all nine parser values and all 26 hashes were unchanged, proving 54% was not ordinary startup normalization.
+48. Root cause: the benchmark resolution-only writer recalculated ImageQuality as 585 from the new 900-pixel output height, which the game interpreted relative to 1080p as about 54%. Resolution-only writes now preserve existing upscaling metadata; focused writer tests pass 21/21, pending a 1600x900 persistence retest.
+49. The first retest showed 1600x900 and Borderless Windowed, but the slider was 78%; preserving DesiredScreen=1248x702 made the UI calculate 1248/1600 as 78%. The second fix writes DesiredScreen=1040x585 while preserving ImageQuality=702; focused tests pass 21/21, pending application exit, restore, and another retest.
+50. The second retest still showed 78%. While the application was open, the live file contained DesiredScreen=1040x585, ImageQuality=702, and sg.ResolutionQuality=54.1666985, proving the visible slider uses ImageQuality/output height while stored percentage uses DesiredScreen/1080p. The third fix preserves DesiredScreen=1248x702 and writes ImageQuality=585; focused tests pass 21/21.
+51. The third retest UI is correct: 1600x900, Borderless Windowed, and slider 65%. While the application remained open, the live file still contained sg.ResolutionQuality=65, DesiredScreen=1248x702, and ImageQuality=585; post-exit persistence and restore verification remain pending.
+52. The third retest fully passed: after exit it remained 1600x900 and 65%, with metadata stable at sg.ResolutionQuality=65, DesiredScreen=1248x702, and ImageQuality=585; all 26 baseline hashes were restored exactly, returning to 1920x1080 and 65%.
+53. In-game persistence case `frame-limit-60-fps` passed: the tester confirmed 60 in the UI; after exit the parser still read 60 FPS and the other eight fields were stable; all 26 baseline hashes were restored exactly and the frame limit is back to 120 FPS.
+54. `fsr-frame-generation-on` passed: both the UI and post-exit parser showed FSR, Frame Generation On, and 65%; raw 0/1 remained stable; all 26 baseline hashes were restored exactly, returning to TSR.
+55. `xess-frame-generation-na` passed: the UI confirmed XeSS, disabled Frame Generation, and 65%; after exit the parser showed XeSS, N/A, and 65%; all 26 baseline hashes were restored exactly, returning to TSR and Frame Generation On.
+56. `quick-preset-low` passed: the UI confirmed Low, Ray Tracing Off, and 65%; after exit Quick Preset remained Low and the other parser values were stable; all 26 baseline hashes were restored exactly, returning to Cinematic.
+57. `fsr-frame-generation-off` passed: the UI and post-exit parser showed FSR, Frame Generation Off, and 65%; all 26 baseline hashes were restored exactly, returning to TSR and Frame Generation On.
+58. Representative in-game persistence is complete for all seven candidate settings. Every case restored all 26 baseline hashes exactly; the live state is back to 1920x1080, Borderless Windowed, V-Sync On, 120 FPS, TSR 65%, Frame Generation On, and Cinematic.
+59. The Benchmark Super Sampling Clarity slider ranges from 33 to 100. After saving and exiting at 33, raw sg.ResolutionQuality was 33.3333015 and the parser displayed Ultra Performance (33%); only GameUserSettings.ini changed and the other eight fields stayed stable. All 26 baseline hashes were restored exactly.
+60. After saving and exiting at 100, raw sg.ResolutionQuality was 100 and the parser displayed Native AA (100%); only GameUserSettings.ini changed and the other eight fields stayed stable. The game removed DesiredScreenWidth/DesiredScreenHeight, changing the structural fingerprint from 3bb9659ab9341d238ae74e2f5b96e148ff065b8e3fd76155fe3a74eef94221f9 to 1198ec49c02647f504ab71f395df6d73ec36bfc650abad34094549c48a482dd1. All 26 baseline hashes and the original fingerprint were restored exactly. Guarded writes from the 100 state require separate review; upscaling_mode remains outside the write allowlist.
+61. On 2026-09-24 the tester again saved 100 and exited. The parser returned Native AA (100%) with fingerprint 1198ec49c02647f504ab71f395df6d73ec36bfc650abad34094549c48a482dd1. The installed rule returned candidate/fingerprint_mismatch; a guarded V-Sync Off write was rejected as write_not_allowed:fingerprint_mismatch, with all 26 hashes unchanged. Independent restore recovered all 26 baseline hashes, the original fingerprint, and Balanced (65%). The local registry reported write_candidate on baseline; neither rule nor allowlist was changed.
+62. With explicit consent, the Benchmark closed, and Steam Cloud non-interfering, a separate local candidate verified guarded writes from the original baseline for named 33/50/100 options. All three passed apply, parser read-back, GameUserSettings.ini-only ownership, and per-case exact 26-file restore. A checksum-valid local v1.2.21 candidate bundle now enables upscaling_mode for GUI testing without changing any other rule. In-game persistence is still pending, and a game-saved 100% state still has a different fingerprint.
+63. GUI Upscaling Mode Performance (50%) passed: the tester confirmed 50% in the Benchmark and exited normally. Post-exit parsing still showed Performance (50%), the other eight fields and original fingerprint remained stable, and only GameUserSettings.ini differed. Independent restore recovered all 26 hashes and nine baseline values exactly, returning to Balanced (65%). The added setting remains a local write_candidate.
+64. GUI Upscaling Mode Ultra Performance (33%) passed: the tester confirmed 33% in the Benchmark and exited normally. Post-exit parsing still showed Ultra Performance (33%), the other eight fields and original fingerprint remained stable, and only GameUserSettings.ini differed. Independent restore recovered all 26 hashes and nine baseline values exactly, returning to Balanced (65%). The added setting remains a local write_candidate pending the 100% GUI persistence check.
+65. GUI Upscaling Mode Native AA (100%) passed: the tester confirmed 100% in the Benchmark, saved, and exited normally. Post-exit parsing still showed Native AA (100%), the other eight fields remained stable, and only GameUserSettings.ini differed. The game removed DesiredScreenWidth/Height, yielding the previously sampled 100%-state fingerprint; the current rule rejects further writes as fingerprint_mismatch. Independent restore recovered all 26 hashes, nine baseline values, and the original fingerprint, returning to Balanced (65%). All three 33/50/100 GUI persistence cases passed; the added setting remains a local write_candidate.
 
 停止條件 / Stop Conditions
 - 不得使用正式版 %LOCALAPPDATA%/b1 設定檔作為 Benchmark Evidence。

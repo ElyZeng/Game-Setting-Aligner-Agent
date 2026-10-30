@@ -1,5 +1,46 @@
 # Changelog
 
+# v0.08.23 (2026-10-15)
+
+
+### Added
+- Black Myth: Wukong Benchmark Tool now has dedicated parser and writer mappings separate from the retail game.
+- Benchmark writes support the verified resolution, screen mode, V-Sync, frame limit, upscaling method, frame generation, and fixed quick-preset values.
+
+### Fixed
+- Benchmark TSR, FSR, and XeSS values now use their observed stored enums, including method-specific Frame Generation availability.
+- Super Sampling Clarity is read as its exact stored percentage, and Custom quality level `6` is parsed correctly.
+
+### Validation
+- Steam build 15365379 (fingerprint 3bb9659a…) passed a 21-case remote matrix: guarded write, parser read-back, byte-exact restore of all 29 snapshot files, and launch-and-exit persistence of every written value.
+- In-game menu check: Windowed, 1280x720, 1600x900, V-Sync Off, Unlimited/30/60 FPS, upscaling/frame-generation combinations and four quick presets match the menu. Resolutions above the 1920x1080 desktop mode and 144/240 FPS persist in the file but the menu shows 1920x1080 and 120; these values need confirmation before a write rule allows them.
+
+---
+
+# v0.08.22 (2026-10-05)
+
+### Fixed
+- GTA V Enhanced can apply Upscaling Method and its selected Mode together; the mode is checked against the target method without relaxing frame-generation or unrelated-setting guards.
+- AMD FSR 1 now offers all four game-observed modes: Ultra Quality, Quality, Balanced, and Performance. The reader and guarded writer use the corresponding saved XML values.
+
+### Validation
+- Verification rules v1.2.25 replace only the exact GTA Steam rule to allow Ultra Quality. The rule remains `write_candidate` and requires the exact game version and structural fingerprint plus explicit test-write consent.
+- A real-file Ultra Quality write passed preflight, backup, parser read-back, and byte-exact independent restoration to the original FSR 1 Balanced state. Writer-origin in-game restart persistence has not been tested.
+
+---
+
+# v0.08.21 (2026-10-05)
+
+### Added
+- Grand Theft Auto V Enhanced Steam build 1.0.1158.16 exposes Upscaling Method, dependent Upscaling Mode, and six observed Quick Preset values through guarded writes. Preset writes update the complete 67-field game-saved signature instead of only the preset label.
+- Verification rules v1.2.24 retain the existing GTA controls and all other v1.2.23 rules, adding these three options only for the exact Steam version and structural fingerprint. The rule remains `write_candidate` and requires explicit test-write consent.
+
+### Validation
+- All six presets passed real-file preflight, Apply, parser read-back, backup, and exact independent High restoration. Very High and Very High with Ray Tracing also matched the game UI after restart; the other four values have not each been tested for writer-origin restart persistence.
+- Upscaling Method and Mode writes remain restricted to their observed values and valid method-specific dependencies.
+
+---
+
 # v0.08.18 (2026-10-04)
 
 ### Added
