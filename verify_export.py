@@ -2,7 +2,8 @@ import json
 import os
 import sys
 
-sys.path.insert(0, r'd:\AI\Game-Tuner-POC')
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJECT_ROOT)
 from config_manager.config_exporter import ConfigExporter
 
 class Game:
@@ -11,8 +12,8 @@ class Game:
         self.install_path = r'C:\games\test'
         self.platform = 'Steam'
 
-cfg = os.path.join(r'd:\AI\Game-Tuner-POC', 'tmp_test_cfg.json')
-out = os.path.join(r'd:\AI\Game-Tuner-POC', 'tmp_export.json')
+cfg = os.path.join(PROJECT_ROOT, 'tmp_test_cfg.json')
+out = os.path.join(PROJECT_ROOT, 'tmp_export.json')
 
 with open(cfg, 'w', encoding='utf-8') as f:
     json.dump({

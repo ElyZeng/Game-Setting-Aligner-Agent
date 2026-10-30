@@ -153,9 +153,34 @@ SETTING_OPTIONS: Dict[str, List[str]] = {
     ],
 }
 
+# Forza Horizon 6 (UserConfig Version="52") stores FrameRate as a fraction of the display refresh rate:
+# 0..3 = refresh / 4, 3, 2, 1 and 4 = "Unlocked (variable)", which the game only offers with VSync Off.
+# The refresh rate is in the same file (<MonitorRefreshPeriod value="0.006944"/> = 1/144 s).
+FORZA_V52_FRAME_RATE_DIVISORS = (4, 3, 2, 1)
+FORZA_DEFAULT_REFRESH_RATE = 60
+
+
+def forza_refresh_rate(content: Optional[str]) -> int:
+    """Display refresh rate recorded by Forza in UserConfigSelections (60 Hz when absent)."""
+    match = re.search(r'<MonitorRefreshPeriod\b[^>]*\bvalue="([^"]*)"', content or "")
+    try:
+        period = float(match.group(1)) if match else 0.0
+    except ValueError:
+        period = 0.0
+    if period <= 0:
+        return FORZA_DEFAULT_REFRESH_RATE
+    return max(1, int(round(1.0 / period)))
+
+
+def forza_v52_frame_rate_labels(refresh_rate: Optional[int]) -> List[str]:
+    """FrameRate enum labels for one refresh rate, index = enum value."""
+    hz = refresh_rate if refresh_rate and refresh_rate > 0 else FORZA_DEFAULT_REFRESH_RATE
+    return [f"{int(round(hz / divisor))} FPS" for divisor in FORZA_V52_FRAME_RATE_DIVISORS] + ["Unlimited"]
+
+
 FORZA_SETTING_OPTIONS: Dict[str, List[str]] = {
     SCREEN_MODE: ["—", "Fullscreen", "Windowed"],
-    FRAME_LIMIT: ["—", "20 FPS", "30 FPS", "60 FPS", "Unlimited"],
+    FRAME_LIMIT: ["—", *forza_v52_frame_rate_labels(FORZA_DEFAULT_REFRESH_RATE)],
     UPSCALING: ["—", "Off", "DLSS", "FSR", "XeSS"],
     QUICK_PRESET: ["—", "Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
 }
@@ -365,7 +390,9 @@ def setting_options_for_game(
         if key == UPSCALING:
             return ["—", "TSR", "NXSR", "FSR3", "XeSS"]
         if key == UPSCALING_MODE:
-            if "benchmark" in name or upscaling_method is None:
+            if "benchmark" in name:
+                return ["—", "Ultra Performance (33%)", "Performance (50%)", "Balanced (65%)", "Native AA (100%)"] if upscaling_method in {"TSR", "FSR", "XeSS"} else ["—"]
+            if upscaling_method is None:
                 return ["—"]
             return [
                 "—",
@@ -376,6 +403,8 @@ def setting_options_for_game(
                 return ["—", "Off", "On"] if upscaling_method in {"TSR", "FSR"} else ["—"]
             return ["—", "Off", "Auto"] if upscaling_method == "XeSS" else ["—", "Off"]
         if key == QUICK_PRESET:
+            if "benchmark" in name:
+                return ["—", "Low", "Medium", "High", "Very High", "Cinematic"]
             return ["—", "Custom", "Low", "Medium", "High", "Very High", "Cinematic"]
     if "street fighter" in name or "streetfighter" in name:
         if key == UPSCALING_MODE:
@@ -408,6 +437,11 @@ def setting_options_for_game(
                 "XeSS": ["Ultra Quality Plus", "Ultra Quality", "Quality", "Balanced", "Performance", "Ultra Performance"],
             }
             return ["—", *modes.get(upscaling_method or "", [])]
+        if key == FRAME_LIMIT:
+            hz = refresh_rate
+            if not hz:
+                _, hz = desktop_display_mode()
+            return ["—", *forza_v52_frame_rate_labels(hz)]
         if key in FORZA_SETTING_OPTIONS:
             return FORZA_SETTING_OPTIONS[key]
     if "cyberpunk" in game_name.casefold():
@@ -455,8 +489,8 @@ QUICK_PRESET_OPTIONS: Dict[str, List[str]] = {
         "Medium",
         "High",
         "Ultra",
+        "Ray Tracing Low",
         "Ray Tracing Medium",
-        "Ray Tracing High",
         "Ray Tracing Ultra",
         "Path Tracing",
     ],
@@ -538,7 +572,8 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     if fps_on is not None:
         on = fps_on.get("value", False)
         limit = fps_val.get("value", "") if fps_val else ""
-        r[FRAME_LIMIT] = f"{limit}" if on else "Off"
+        # Same format as setting_options_for_game ("30 FPS"), so a written option reads back unchanged (#100).
+        r[FRAME_LIMIT] = (f"{limit} FPS" if limit not in ("", None) else "On") if on else "Off"
 
     # Dynamic Resolution
     drs = options_map.get("DynamicResolutionScaling")
@@ -596,7 +631,9 @@ def _parse_cyberpunk(content: str) -> Dict[str, Optional[str]]:
     # Quick Preset — stored under /graphics/presets/QuickPresets
     qp = options_map.get("/graphics/presets/QuickPresets") or options_map.get("QuickPresets")
     if qp is not None:
-        r[QUICK_PRESET] = str(qp.get("value", "Custom"))
+        # The game stores Path Tracing as "Ray Tracing Overdrive" (#99).
+        value = str(qp.get("value", "Custom"))
+        r[QUICK_PRESET] = {"Ray Tracing Overdrive": "Path Tracing"}.get(value, value)
 
     return r
 
@@ -663,12 +700,13 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
             "3": "High",
             "4": "Very High",
             "5": "Cinematic",
+            **({"6": "Custom"} if benchmark else {}),
         }.get(quality, f"Quality Level {quality}")
         scalability_values = [
             ini_values[key] for key in BLACK_MYTH_SCALABILITY_KEYS
             if key in ini_values
         ]
-        expected_level = str(int(quality) - 1) if quality.isdigit() and quality != "0" else None
+        expected_level = str(int(quality) - 1) if quality in {"1", "2", "3", "4", "5"} else None
         r[QUICK_PRESET] = (
             "Custom"
             if expected_level is not None
@@ -679,7 +717,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
 
     super_resolution = ui_values.get("SuperResolutionSampling")
     if super_resolution is not None:
-        mapping = {"3": "XeSS"} if benchmark else {
+        mapping = {"0": "FSR", "1": "XeSS", "3": "TSR"} if benchmark else {
             "0": "FSR3",
             "1": "XeSS",
             "3": "TSR",
@@ -687,7 +725,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
         }
         r[UPSCALING] = mapping.get(super_resolution, f"Super Resolution (mode {super_resolution})")
         resolution_quality = _parse_positive_int(ini_values.get("sg.ResolutionQuality"))
-        if not benchmark and resolution_quality is not None:
+        if resolution_quality is not None:
             r[UPSCALING_MODE] = _black_myth_upscaling_mode(resolution_quality)
         else:
             r[UPSCALING_MODE] = "N/A"
@@ -701,7 +739,7 @@ def _parse_black_myth(content: str, *, benchmark: bool = False) -> Dict[str, Opt
         else:
             r[FRAME_GENERATION] = {
                 "0": "Off",
-                "1": "Auto",
+                "1": "On" if benchmark else "Auto",
             }.get(insert_frame, f"Mode {insert_frame}")
 
     r[DYNAMIC_RESOLUTION] = "N/A"
@@ -909,7 +947,8 @@ def _parse_forza_xml(content: str) -> Dict[str, Optional[str]]:
     if fr is not None:
         fr_map = {"0": "30 FPS", "1": "40 FPS", "2": "60 FPS", "3": "120 FPS", "4": "Unlimited"}
         if re.search(r'<UserConfig\b[^>]*\bVersion="52"', content):
-            fr_map = {"1": "20 FPS", "2": "30 FPS", "3": "60 FPS", "4": "Unlimited"}
+            labels = forza_v52_frame_rate_labels(forza_refresh_rate(content))
+            fr_map = {str(index): label for index, label in enumerate(labels)}
         r[FRAME_LIMIT] = fr_map.get(fr, f"Preset {fr}")
 
     # Dynamic Resolution
