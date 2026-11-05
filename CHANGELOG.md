@@ -1,5 +1,25 @@
 # Changelog
 
+# Unreleased (fix/write-safety)
+
+### Security / Safety
+- Config writes are atomic: data goes to a temporary file in the same folder, is flushed to disk and then replaces the original, so a crash or power loss can no longer leave a half-written file. Existing line endings (LF/CRLF) and UTF-8 BOM are kept.
+- Rollback after a failed or unverifiable write restores the exact original bytes (previously the decoded text was written back, which could alter non-UTF-8 bytes and line endings). A writer exception now also triggers rollback, and a failed rollback keeps the verified copy and reports where it is.
+- Writes are refused if the config file changed between reading and backing it up (`config_changed_during_write`).
+- The copy taken before Game Tuner's first write to a game is kept permanently (`backups/<game>.pristine`); the previous five rolling backups are kept under `backups/history/`. New "Restore Original" button and `restore-original` CLI command restore it byte-for-byte with SHA-256 checks.
+- Writes and restores are refused while any process from the game's install folder is running (`game_running:<exe>`); if the process list cannot be read the write is refused (`process_check_failed`).
+- External HTTP API: `/apply` now uses the same guarded write as the GUI/CLI (consent, rules, running check, backup, rollback) and ignores caller-supplied `config_files`; `/apply`, `/import` and `/export` require the `X-GameTuner-Token` header; CORS headers removed, non-loopback `Host` headers and bind addresses refused; `/export` writes only into the Game Tuner exports folder; `/import` blocks GTA packages like the CLI.
+- The GUI no longer falls back to an unguarded write when no guarded write path is available.
+- Added DISCLAIMER.md and a README notice.
+- Writes need the current disclaimer to be accepted (`DISCLAIMER_VERSION`; older acceptances are asked again) and a per-game consent for the exact game, platform and version (`game-consent.json`). The GUI asks once per game/version; `apply --confirm-test-write` records it for the named game.
+- Every written value must be one the game itself offers: the rule's `supported_values` when present, otherwise the same per-game option lists the GUI uses (`write_value_not_allowed`).
+- Games with anti-cheat components in their install folder (EasyAntiCheat, BattlEye, EA Javelin, GameGuard, XIGNCODE3, Anti-Cheat Expert, PunkBuster, mhyprot) are read-only unless the rule carries an approved review whose recorded components match exactly; writes are then limited to the reviewed scope.
+- Registry writes: only changed values are written, each keeps its existing type, only DWORD/QWORD/SZ/EXPAND_SZ values that already exist can be written; keys are snapshotted, read back and restored on failure, and included in the pristine backup. Registry entries now use their `registry_path` (previously the writer failed on a missing `expanded_path`).
+- The writer is no longer guessed from a file extension (any `.xml` used to go to the Forza writer, any `.ini` to the Unreal writer); Street Fighter 6 stays read-only.
+- Config package imports back up every file they overwrite (`backups/imports/<time>/`) and use atomic writes.
+
+---
+
 # v0.08.23 (2026-10-15)
 
 

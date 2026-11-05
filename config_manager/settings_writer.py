@@ -14,6 +14,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from . import registry_io
+from .safe_io import atomic_write_bytes, atomic_write_text
 from .settings_parser import (
     RESOLUTION,
     SCREEN_MODE,
@@ -37,10 +39,8 @@ QUICK_PRESET = "quick_preset"
 # ── Helpers ──────────────────────────────────────────────────────────
 
 def _safe_write(path: str, content: str) -> None:
-    """Write *content* to *path*, creating parent directories if needed."""
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+    """Atomically write *content* to *path*, keeping its newline/BOM style."""
+    atomic_write_text(path, content)
 
 def forza_auxiliary_paths(config_files: List[Dict[str, Any]]) -> List[str]:
     """Return Forza files that persist settings outside UserConfigSelections."""
@@ -1259,7 +1259,7 @@ def _write_gta_enhanced_settings(
         patched = _write_gta_enhanced_xml(content, settings)
         if patched == content:
             raise ValueError("GTA V Enhanced write would not change config")
-        path.write_bytes(patched.encode("utf-8"))
+        atomic_write_bytes(path, patched.encode("utf-8"))
         return [{"path": str(path), "status": "ok", "detail": "GTA V Enhanced settings written"}]
     except (OSError, UnicodeError, ValueError, ET.ParseError) as exc:
         return [{"path": str(path), "status": "error", "detail": str(exc)}]
@@ -1419,6 +1419,10 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
         return "forza_xml"
     if "f1" in name_lower and "25" in name_lower:
         return "f1_xml"
+    if "street fighter 6" in name_lower:
+        # Read-only: SF6 has a dedicated parser but no writer; its INI is not
+        # an Unreal GameUserSettings file.
+        return "unknown"
 
     readable = [c for c in config_files if c.get("content") and c.get("found")]
 
@@ -1431,21 +1435,9 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
         if "ResolutionSizeX" in content or "FullscreenMode" in content:
             return "unreal_ini"
 
-    # Fallback: try to detect from file extension / content
-    for cfg in readable:
-        path = cfg.get("expanded_path", "")
-        if path.endswith(".ini") or path.endswith(".cfg"):
-            return "unreal_ini"
-        if path.endswith(".xml"):
-            return "forza_xml"
-        if path.endswith(".json"):
-            try:
-                data = json.loads(cfg.get("content", ""))
-                if "data" in data and isinstance(data.get("data"), list):
-                    return "cyberpunk"
-            except Exception:
-                pass
-
+    # No guessing from file extensions: a wrong writer (e.g. any ``.xml`` sent
+    # to the Forza writer, any ``.ini`` to the Unreal writer) could corrupt a
+    # file it does not understand.  Unknown formats are simply not written.
     return "unknown"
 
 
@@ -1543,8 +1535,7 @@ def write_settings(
                     if SCREEN_MODE in to_write:
                         fullscreen_value = bytes([1 if to_write[SCREEN_MODE] == "Fullscreen" else 0])
                         for auxiliary_path in forza_auxiliary_paths(config_files):
-                            with open(auxiliary_path, "wb") as auxiliary_file:
-                                auxiliary_file.write(fullscreen_value)
+                            atomic_write_bytes(auxiliary_path, fullscreen_value)
                             results.append({"path": auxiliary_path, "status": "ok", "detail": "Forza fullscreen choice written"})
                 except Exception as e:
                     results.append({"path": path, "status": "error", "detail": str(e)})
@@ -1567,15 +1558,17 @@ def write_settings(
     elif parser_type == "registry_json":
         for cfg in readable:
             if cfg.get("type") == "registry":
+                path = cfg.get("registry_path") or cfg.get("expanded_path", "")
                 try:
                     new_content = _write_registry_json(cfg["content"], to_write)
-                    # Registry entries need special handling — write back to the
-                    # registry, not a file.  For now, store the JSON and report.
-                    path = cfg["expanded_path"]
-                    _write_registry_values(path, new_content)
-                    results.append({"path": path, "status": "ok", "detail": "Registry settings written"})
+                    changes = registry_io.diff_changes(cfg["content"], new_content)
+                    written = registry_io.write_changes(path, changes, registry_io.default_backend())
+                    results.append({
+                        "path": path, "status": "ok",
+                        "detail": f"Registry settings written ({len(written)} value(s))",
+                    })
                 except Exception as e:
-                    results.append({"path": cfg.get("expanded_path", ""), "status": "error", "detail": str(e)})
+                    results.append({"path": path, "status": "error", "detail": str(e)})
                 break
 
     elif parser_type == "cs2":
@@ -1594,47 +1587,3 @@ def write_settings(
         results.append({"path": "", "status": "skipped", "detail": f"Unknown parser type for '{game_name}'"})
 
     return results
-
-
-def _write_registry_values(reg_path: str, json_content: str) -> None:
-    """Write settings back to the Windows registry.
-
-    *reg_path* is the expanded registry path (e.g.
-    ``HKEY_CURRENT_USER\\Software\\...``).  *json_content* is the full
-    JSON string representing the registry key's values.
-    """
-    if os.name != "nt":
-        raise OSError("Registry writes are only supported on Windows")
-
-    import winreg
-
-    try:
-        data = json.loads(json_content)
-    except (json.JSONDecodeError, ValueError) as e:
-        raise ValueError(f"Invalid registry JSON: {e}") from e
-
-    # Parse the registry path
-    hive_map = {
-        "HKEY_CURRENT_USER": winreg.HKEY_CURRENT_USER,
-        "HKCU": winreg.HKEY_CURRENT_USER,
-        "HKEY_LOCAL_MACHINE": winreg.HKEY_LOCAL_MACHINE,
-        "HKLM": winreg.HKEY_LOCAL_MACHINE,
-    }
-
-    parts = reg_path.replace("/", "\\").split("\\")
-    hive_name = parts[0].upper()
-    hive = hive_map.get(hive_name)
-    if hive is None:
-        raise ValueError(f"Unknown registry hive: {hive_name}")
-
-    subkey = "\\".join(parts[1:])
-
-    # Flatten the data if it has a top-level "Graphics" key
-    values = data.get("Graphics", data)
-
-    with winreg.OpenKey(hive, subkey, 0, winreg.KEY_WRITE) as key:
-        for name, value in values.items():
-            if isinstance(value, int):
-                winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, value)
-            elif isinstance(value, str):
-                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)

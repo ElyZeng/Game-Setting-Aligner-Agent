@@ -7,6 +7,9 @@
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Platform](https://img.shields.io/badge/Platform-Steam%20%7C%20Epic%20%7C%20GOG-orange)
 
+> **免責聲明 / Disclaimer:** 本工具會修改遊戲設定檔。使用前請閱讀 [DISCLAIMER.md](DISCLAIMER.md)：寫入前會自動備份並可隨時還原到使用前的狀態；遊戲執行中會拒絕寫入；「寫入安全」等級不保證遊戲會套用該值；你須自行遵守各遊戲的 EULA／服務條款；本軟體不附任何擔保。
+> This tool modifies game settings files. Read [DISCLAIMER.md](DISCLAIMER.md) first: files are backed up before every write and can be restored to their pre-Game-Tuner state; writes are refused while the game runs; the "write-safe" level does not guarantee the game applies a value; you are responsible for each game's EULA/ToS; no warranty is provided.
+
 ---
 
 ## 功能特色 / Features
@@ -316,9 +319,22 @@ curl -X POST http://127.0.0.1:8787/parse ^
 - `POST /query` 需要 `{"game": "...", "install_path": "..."}`
 - `POST /detect` 需要 `{"game": "...", "install_path": "..."}`
 - `POST /parse` 需要 `{"game": "..."}`，可選 `config_files`
-- `POST /apply` 需要 `{"game": "...", "settings": {...}}`
-- `POST /export` 可選 `{"games": ["A", "B"], "output": "export.json"}`
-- `POST /import` 需要 `{"package": "export.json"}`
+- `POST /apply` 需要 `{"game": "...", "settings": {...}}`（需 token）
+- `POST /export` 可選 `{"games": ["A", "B"], "output": "export.json"}`（需 token；一律寫到 `%LOCALAPPDATA%\GameTuner\exports\`）
+- `POST /import` 需要 `{"package": "export.json"}`（需 token）
+
+安全限制 / Security limits:
+
+- 會修改檔案的端點（`/apply`、`/import`、`/export`）必須帶 `X-GameTuner-Token` header。token 在伺服器啟動時印出，或用 `--token` / 環境變數 `GAMETUNER_API_TOKEN` 指定。 / Endpoints that change files require the `X-GameTuner-Token` header; the token is printed at start-up or set with `--token` / `GAMETUNER_API_TOKEN`.
+- 只能綁定 loopback 位址，不送 CORS header，並檢查 `Host` header，瀏覽器裡的網頁無法呼叫。 / Loopback only, no CORS headers, and the `Host` header is checked, so web pages cannot drive the API.
+- `/apply` 走跟 GUI/CLI 相同的受控寫入：使用者同意、驗證規則、遊戲執行中檢查、反作弊檢查、備份與還原；呼叫端提供的 `config_files` 在寫入時一律忽略。API 無法代替使用者同意：須先在 GUI 或 CLI 接受 disclaimer 並確認該遊戲／版本。 / `/apply` uses the same guarded write as the GUI and CLI; caller-supplied `config_files` are ignored. The API cannot give consent: accept the disclaimer and confirm the game/version in the GUI or CLI first.
+
+```bash
+curl -X POST http://127.0.0.1:8787/apply ^
+  -H "Content-Type: application/json" ^
+  -H "X-GameTuner-Token: <token>" ^
+  -d "{\"game\":\"F1 25\",\"settings\":{\"vsync\":\"Off\"}}"
+```
 
 ### 匿名化客戶設定收集 / Anonymized Customer Collection
 

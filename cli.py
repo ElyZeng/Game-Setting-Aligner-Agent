@@ -156,13 +156,41 @@ def cmd_apply(args):
     games = _scan_all()
     matched = next((game for game in games if game.get("name", "").lower() == args.game.lower()), {})
     registry = VerificationRegistry(__version__)
+    platform = matched.get("platform", "Unknown")
+    game_version = detect_game_version(matched.get("install_path", ""))
     if args.confirm_test_write:
+        # The flag names this game explicitly, so it also covers per-game consent
+        # for the detected version (see DISCLAIMER.md).
         registry.enable_test_writes()
+        registry.grant_game_consent(args.game, platform, game_version, status="cli")
+    install_path = args.install_path or matched.get("install_path", "")
     results = backup_and_write(
-        args.game, matched.get("platform", "Unknown"), detect_game_version(matched.get("install_path", "")),
-        config_files, settings, write_settings, registry,
+        args.game, platform, game_version,
+        config_files, settings, write_settings, registry, install_path=install_path or None,
     )
     _json_out(results)
+
+
+def cmd_restore_original(args):
+    from config_manager import VerificationError, VerificationRegistry
+    from config_manager.verification import restore_pristine_backup
+
+    try:
+        if not args.confirm:
+            raise VerificationError("restore_consent_required")
+        install_path = args.install_path
+        if not install_path:
+            matched = next(
+                (game for game in _scan_all() if game.get("name", "").lower() == args.game.lower()), {}
+            )
+            install_path = matched.get("install_path", "")
+        result = restore_pristine_backup(
+            args.game, VerificationRegistry(__version__), install_path=install_path or None,
+        )
+    except (OSError, ValueError, VerificationError) as exc:
+        _json_out({"status": "blocked", "error": str(exc)})
+        raise SystemExit(1) from exc
+    _json_out(result)
 
 
 def cmd_preflight(args):
@@ -376,7 +404,8 @@ def build_parser():
     s.add_argument("--config-json", help="Path to a JSON file with config file data (skip auto-detect)")
     s.add_argument(
         "--confirm-test-write", action="store_true",
-        help="Acknowledge and enable experimental write mode for this Windows user",
+        help="Accept DISCLAIMER.md, enable writes for this Windows user and confirm writes "
+             "for this game and its detected version",
     )
     s.set_defaults(func=cmd_apply)
 
@@ -423,6 +452,15 @@ def build_parser():
     s.add_argument("--rules-dir", type=Path, required=True, help="Isolated directory with reviewed verification rules")
     s.add_argument("--confirm-no-change-restore", action="store_true")
     s.set_defaults(func=cmd_restore_baseline)
+
+    s = sub.add_parser(
+        "restore-original",
+        help="Restore a game's config files to the state before Game Tuner's first write",
+    )
+    s.add_argument("game", help="Game title (as shown by scan)")
+    s.add_argument("--install-path", help="Game install path, used to refuse while the game is running")
+    s.add_argument("--confirm", action="store_true", help="Confirm overwriting the current config files")
+    s.set_defaults(func=cmd_restore_original)
 
     return p
 

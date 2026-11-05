@@ -22,8 +22,10 @@ from wiki_api import PCGamingWikiClient
 from config_manager import (
     ConfigPackage, ConfigExporter, VerificationError, VerificationRegistry,
     app_data_dir, backup_and_write, build_preview, detect_config_files, detect_game_version,
-    export_diagnostic_package, game_structural_fingerprint,
+    describe_verification_error, export_diagnostic_package, game_structural_fingerprint,
+    restore_pristine_backup,
 )
+from config_manager.verification import apply_anticheat_policy
 from main import __version__
 from config_manager.config_exporter import (
     _try_read_file,
@@ -54,6 +56,36 @@ _UNABLE_TO_CHECK = object()
 
 def _open_export_folder(output_path: Any) -> None:
     os.startfile(output_path.parent)
+
+
+DISCLAIMER_SUMMARY = (
+    "Game Tuner modifies game settings files. Before enabling writes, please read DISCLAIMER.md.\n\n"
+    "- Only settings the game itself offers in its menu are written.\n"
+    "- Files are backed up before every write; the pre-Game-Tuner copy is kept and can be restored "
+    "with \"Restore Original\". Failed writes are rolled back automatically.\n"
+    "- Writes are refused while the game is running. Cloud sync may overwrite changes later.\n"
+    "- \"Write-safe\" means Game Tuner can write and restore the value; it does not guarantee the game "
+    "applies it.\n"
+    "- Games with anti-cheat are read-only unless individually reviewed. Reviews are not endorsed by "
+    "the publisher or anti-cheat vendor.\n"
+    "- You are responsible for each game's EULA / terms of service. No warranty is provided.\n\n"
+    "Do you accept these terms and want to enable writes?"
+)
+
+
+def _game_consent_text(game_name: str, platform: str, version: str, verification: Dict[str, Any]) -> str:
+    status = verification.get("status", "candidate")
+    meaning = {
+        "write_verified": "fully verified for this version",
+        "write_candidate": "write-safe: Game Tuner can write and restore these values, but it is not yet "
+                           "confirmed that the game applies all of them",
+    }.get(status, status)
+    return (
+        f"Allow Game Tuner to change settings for:\n\n{game_name} ({platform}), version {version}\n\n"
+        f"Support level: {meaning}.\n\n"
+        "A backup is created first and failed writes are rolled back. You will be asked again if the "
+        "game version changes. Continue?"
+    )
 
 
 def _verification_allows_setting(verification: Dict[str, Any], key: str) -> bool:
@@ -142,6 +174,7 @@ class GameRow:
         config_files: Optional[List[str]] = None,
         write_callback: Any = None,
         scroll_canvas: Any = None,
+        restore_callback: Any = None,
     ) -> None:
         self.game_name = game_name
         self.platform = platform
@@ -151,6 +184,7 @@ class GameRow:
         self._config_dicts: List[Dict[str, Any]] = []  # raw config file data for write-back
         self._setting_vars: Dict[str, ctk.StringVar] = {}  # dropdown variables
         self._write_callback = write_callback
+        self._restore_callback = restore_callback
         self.verification: Dict[str, Any] = {"status": "candidate", "reason": "not_checked"}
 
         self.var = ctk.BooleanVar(value=False)
@@ -385,6 +419,18 @@ class GameRow:
         )
         self._apply_btn.pack(side="right", padx=8)
 
+        if self._restore_callback is not None:
+            self._restore_btn = ctk.CTkButton(
+                btn_frame,
+                text="Restore Original",
+                width=130,
+                height=26,
+                font=ctk.CTkFont(size=11),
+                fg_color="gray30",
+                command=self._restore_original,
+            )
+            self._restore_btn.pack(side="right", padx=4)
+
     def update_key_settings(self, settings: Dict[str, Optional[str]]) -> None:
         """Update the key settings data and rebuild the panel."""
         self._key_settings = settings
@@ -424,12 +470,14 @@ class GameRow:
             )
             return
 
+        if self._write_callback is None:
+            # Never write without the guarded path (consent, rules, backup, rollback).
+            messagebox.showwarning("Write Disabled", f"Guarded write is not available for {self.game_name}.")
+            return
         try:
-            result = self._write_callback(self, changes) if self._write_callback else write_settings(
-                self.game_name, self._config_dicts, changes
-            )
+            result = self._write_callback(self, changes)
         except VerificationError as exc:
-            messagebox.showwarning("Write Disabled", str(exc))
+            messagebox.showwarning("Write Disabled", describe_verification_error(exc))
             return
         ok_count = sum(1 for r in result if r["status"] == "ok")
         errors = [r for r in result if r["status"] == "error"]
@@ -441,21 +489,7 @@ class GameRow:
                 f"Errors writing settings for {self.game_name}:\n{msg}",
             )
         elif ok_count > 0:
-            refreshed_config_dicts = []
-            for config_file in self._config_dicts:
-                path = str(config_file.get("expanded_path", ""))
-                if path and os.path.isfile(path) and config_file.get("type") != "registry":
-                    refreshed_config_dicts.append(_try_read_file(path))
-                else:
-                    refreshed_config_dicts.append(config_file)
-            self._config_dicts = refreshed_config_dicts
-            refreshed_settings = extract_key_settings(self.game_name, refreshed_config_dicts)
-            self._key_settings = refreshed_settings
-            for key, val in refreshed_settings.items():
-                if key in self._setting_labels:
-                    self._setting_labels[key].configure(
-                        text=val, text_color=("#1a8a4a", "#5af0a0")
-                    )
+            self._refresh_from_disk()
             messagebox.showinfo(
                 "Applied",
                 f"Settings applied for {self.game_name} ({ok_count} file(s) updated).",
@@ -466,6 +500,47 @@ class GameRow:
                 f"No config files were modified for {self.game_name}.\n"
                 "The game's config format may not be supported for writing yet.",
             )
+
+    def _refresh_from_disk(self) -> None:
+        """Re-read this game's config files and update the displayed values."""
+        refreshed_config_dicts = []
+        for config_file in self._config_dicts:
+            path = str(config_file.get("expanded_path", ""))
+            if path and os.path.isfile(path) and config_file.get("type") != "registry":
+                refreshed_config_dicts.append(_try_read_file(path))
+            else:
+                refreshed_config_dicts.append(config_file)
+        self._config_dicts = refreshed_config_dicts
+        refreshed_settings = extract_key_settings(self.game_name, refreshed_config_dicts)
+        self._key_settings = refreshed_settings
+        for key, val in refreshed_settings.items():
+            if key in self._setting_labels:
+                self._setting_labels[key].configure(
+                    text=val, text_color=("#1a8a4a", "#5af0a0")
+                )
+
+    def _restore_original(self) -> None:
+        """Put back the config files saved before Game Tuner's first write."""
+        if not messagebox.askyesno(
+            "Restore Original Settings",
+            f"Restore {self.game_name}'s config files to how they were before Game Tuner "
+            "first changed them?\n\nAll changes made since then (by Game Tuner or in the game) "
+            "will be replaced. Close the game first.",
+        ):
+            return
+        try:
+            result = self._restore_callback(self)
+        except VerificationError as exc:
+            messagebox.showwarning("Restore Not Done", describe_verification_error(exc))
+            return
+        except OSError as exc:
+            messagebox.showerror("Restore Failed", str(exc))
+            return
+        self._refresh_from_disk()
+        messagebox.showinfo(
+            "Restored",
+            f"Original settings restored for {self.game_name} ({len(result.get('files', []))} file(s)).",
+        )
 
     def update_verification(self, verification: Dict[str, Any]) -> None:
         """Show policy state and disable writes unless explicitly verified."""
@@ -542,6 +617,12 @@ class App:
         self._build_ui()
         if self._verification_registry.test_write_enabled():
             self._test_write_btn.configure(text="Disable Test Writes")
+        elif self._verification_registry.disclaimer_outdated():
+            self.root.after(500, lambda: messagebox.showinfo(
+                "Disclaimer Updated",
+                "The disclaimer has changed since you enabled writes, so writes are disabled. "
+                "Click \"Enable Test Writes\" to review and accept it again.",
+            ))
         self._scan_games()
 
     # ------------------------------------------------------------------
@@ -785,6 +866,7 @@ class App:
                 self._scroll_frame, name, platform, install_path,
                 config_files=None, write_callback=self._safe_apply,
                 scroll_canvas=self._scroll_frame._parent_canvas,
+                restore_callback=self._restore_original,
             )
             self._game_rows.append(row)
 
@@ -849,11 +931,14 @@ class App:
                         config_dicts.append(_try_read_file(path))
 
                 settings = extract_key_settings(game_name, config_dicts)
-                verification = self._verification_registry.status_for(
-                    game_name,
-                    getattr(game, "platform", "Unknown"),
-                    detect_game_version(install_path),
-                    game_structural_fingerprint(game_name, config_dicts),
+                verification = apply_anticheat_policy(
+                    self._verification_registry.status_for(
+                        game_name,
+                        getattr(game, "platform", "Unknown"),
+                        detect_game_version(install_path),
+                        game_structural_fingerprint(game_name, config_dicts),
+                    ),
+                    install_path,
                 )
             except Exception:
                 # Graceful degradation: network errors, timeouts, parsing
@@ -989,14 +1074,33 @@ class App:
             row.var.set(False)
 
     def _safe_apply(self, row: GameRow, changes: Dict[str, str]) -> List[Dict[str, Any]]:
+        game_version = detect_game_version(row.install_path)
+        if (
+            self._verification_registry.test_write_enabled()
+            and not self._verification_registry.game_consent_granted(row.game_name, row.platform, game_version)
+        ):
+            if not messagebox.askyesno(
+                "Confirm Writes For This Game",
+                _game_consent_text(row.game_name, row.platform, game_version, row.verification),
+            ):
+                raise VerificationError("game_consent_required")
+            self._verification_registry.grant_game_consent(
+                row.game_name, row.platform, game_version, status=str(row.verification.get("status", "")),
+            )
         return backup_and_write(
             row.game_name,
             row.platform,
-            detect_game_version(row.install_path),
+            game_version,
             row._config_dicts,
             changes,
             write_settings,
             self._verification_registry,
+            install_path=row.install_path or None,
+        )
+
+    def _restore_original(self, row: GameRow) -> Dict[str, Any]:
+        return restore_pristine_backup(
+            row.game_name, self._verification_registry, install_path=row.install_path or None,
         )
 
     def _enable_test_writes(self) -> None:
@@ -1005,12 +1109,7 @@ class App:
             self._test_write_btn.configure(text="Enable Test Writes")
             messagebox.showinfo("Test Writes", "Experimental write mode is disabled.")
             return
-        if not messagebox.askyesno(
-            "Enable Test Writes",
-            "This is an experimental feature that changes game configuration files. "
-            "Only verified games can be changed. A backup is created before every write, "
-            "and failed validation restores it. Enable test writes?",
-        ):
+        if not messagebox.askyesno("Enable Writes - Disclaimer", DISCLAIMER_SUMMARY):
             return
         self._verification_registry.enable_test_writes()
         self._test_write_btn.configure(text="Disable Test Writes")
@@ -1049,11 +1148,14 @@ class App:
         def _refresh() -> None:
             for row in rows:
                 try:
-                    verification = self._verification_registry.status_for(
-                        row.game_name,
-                        row.platform,
-                        detect_game_version(row.install_path),
-                        game_structural_fingerprint(row.game_name, row._config_dicts),
+                    verification = apply_anticheat_policy(
+                        self._verification_registry.status_for(
+                            row.game_name,
+                            row.platform,
+                            detect_game_version(row.install_path),
+                            game_structural_fingerprint(row.game_name, row._config_dicts),
+                        ),
+                        row.install_path,
                     )
                 except Exception:
                     verification = {"status": "candidate", "reason": "detection_failed"}
@@ -1420,7 +1522,7 @@ class App:
                 result = self._safe_apply(row, game_changes)
             except VerificationError as exc:
                 total_err += 1
-                error_details.append(f"{row.game_name}: {exc}")
+                error_details.append(f"{row.game_name}: {describe_verification_error(exc)}")
                 continue
             for r in result:
                 if r["status"] == "ok":
@@ -1482,7 +1584,7 @@ class App:
                 result = self._safe_apply(row, changes)
             except VerificationError as exc:
                 total_err += 1
-                error_details.append(f"{row.game_name}: {exc}")
+                error_details.append(f"{row.game_name}: {describe_verification_error(exc)}")
                 continue
             for r in result:
                 if r["status"] == "ok":

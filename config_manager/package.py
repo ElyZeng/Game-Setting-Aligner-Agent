@@ -9,9 +9,13 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any, Dict, List
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from .reader import ConfigReader
+from .safe_io import atomic_write_bytes, atomic_write_text, sha256_bytes
 from .writer import ConfigWriter
 
 
@@ -34,9 +38,41 @@ class ConfigPackage:
 
     SUPPORTED_VERSIONS = {1, 2}
 
-    def __init__(self) -> None:
+    def __init__(self, backup_root: Optional[Path] = None) -> None:
         self._reader = ConfigReader()
         self._writer = ConfigWriter()
+        self._backup_root = backup_root
+        self.last_backup: Optional[Path] = None
+
+    def _backup_existing(self, paths: List[str]) -> Optional[Path]:
+        """Copy every existing target file before an import overwrites it.
+
+        Stored under ``<app data>/backups/imports/<timestamp>/`` with a
+        manifest (original path + SHA-256), so an import can always be undone.
+        """
+        existing = [path for path in dict.fromkeys(paths) if path and os.path.isfile(path)]
+        if not existing:
+            return None
+        root = self._backup_root
+        if root is None:
+            from .verification import app_data_dir  # local import: avoids a cycle
+
+            root = app_data_dir() / "backups" / "imports"
+        folder = Path(root) / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        folder.mkdir(parents=True, exist_ok=False)
+        entries = []
+        for index, path in enumerate(existing):
+            data = Path(path).read_bytes()
+            copy = folder / f"{index}-{os.path.basename(path)}"
+            shutil.copy2(path, copy)
+            if copy.read_bytes() != data:
+                raise OSError(f"import_backup_mismatch:{path}")
+            entries.append({"file": copy.name, "path": path, "sha256": sha256_bytes(data)})
+        (folder / "backup-manifest.json").write_text(
+            json.dumps({"format_version": 1, "kind": "import", "files": entries}, indent=2), encoding="utf-8"
+        )
+        self.last_backup = folder
+        return folder
 
     def export(self, game_configs: Dict[str, List[str]], output_path: str) -> None:
         """Export configuration files for multiple games to *output_path*.
@@ -94,6 +130,12 @@ class ConfigPackage:
         if pkg_version == 2:
             return self._import_v2(package)
 
+        self._backup_existing([
+            config_path
+            for game_data in package.get("games", {}).values()
+            for config_path, data in game_data.items()
+            if isinstance(data, dict) and "_error" not in data
+        ])
         restored: Dict[str, List[str]] = {}
         for game_name, game_data in package.get("games", {}).items():
             restored_paths: List[str] = []
@@ -116,6 +158,17 @@ class ConfigPackage:
         ``content``, ``found``, ``error``, and optionally ``type`` keys.
         Registry entries are skipped (cannot be written back easily).
         """
+        targets: List[str] = []
+        for game_name, game_data in package.get("games", {}).items():
+            for cfg in game_data.get("config_files", []):
+                if cfg.get("type") == "registry" or not cfg.get("expanded_path") or not cfg.get("content"):
+                    continue
+                targets.append(cfg["expanded_path"])
+                sidecar = self._forza_fullscreen_sidecar(cfg["expanded_path"], cfg["content"])
+                if sidecar is not None:
+                    targets.append(sidecar)
+        self._backup_existing(targets)
+
         restored: Dict[str, List[str]] = {}
         for game_name, game_data in package.get("games", {}).items():
             restored_paths: List[str] = []
@@ -131,17 +184,17 @@ class ConfigPackage:
                 if cfg.get("error"):
                     continue
                 try:
-                    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-                    with open(
-                        path, "w", encoding="utf-8",
-                        newline="" if "grand theft auto v enhanced" in game_name.casefold() else None,
-                    ) as fh:
-                        fh.write(content)
+                    if "grand theft auto v enhanced" in game_name.casefold():
+                        # Exact bytes: the GTA guarded restore compares them.
+                        atomic_write_bytes(path, content.encode("utf-8"))
+                    else:
+                        atomic_write_text(path, content)
                     restored_paths.append(path)
                     sidecar = self._forza_fullscreen_sidecar(path, content)
                     if sidecar is not None:
-                        with open(sidecar, "wb") as fh:
-                            fh.write(bytes([1 if self._forza_fullscreen_value(content) == "1" else 0]))
+                        atomic_write_bytes(
+                            sidecar, bytes([1 if self._forza_fullscreen_value(content) == "1" else 0])
+                        )
                         restored_paths.append(sidecar)
                 except Exception:
                     pass
