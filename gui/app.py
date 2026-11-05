@@ -22,7 +22,8 @@ from wiki_api import PCGamingWikiClient
 from config_manager import (
     ConfigPackage, ConfigExporter, VerificationError, VerificationRegistry,
     app_data_dir, backup_and_write, build_preview, detect_config_files, detect_game_version,
-    export_diagnostic_package, game_structural_fingerprint,
+    describe_verification_error, export_diagnostic_package, game_structural_fingerprint,
+    restore_pristine_backup,
 )
 from main import __version__
 from config_manager.config_exporter import (
@@ -142,6 +143,7 @@ class GameRow:
         config_files: Optional[List[str]] = None,
         write_callback: Any = None,
         scroll_canvas: Any = None,
+        restore_callback: Any = None,
     ) -> None:
         self.game_name = game_name
         self.platform = platform
@@ -151,6 +153,7 @@ class GameRow:
         self._config_dicts: List[Dict[str, Any]] = []  # raw config file data for write-back
         self._setting_vars: Dict[str, ctk.StringVar] = {}  # dropdown variables
         self._write_callback = write_callback
+        self._restore_callback = restore_callback
         self.verification: Dict[str, Any] = {"status": "candidate", "reason": "not_checked"}
 
         self.var = ctk.BooleanVar(value=False)
@@ -385,6 +388,18 @@ class GameRow:
         )
         self._apply_btn.pack(side="right", padx=8)
 
+        if self._restore_callback is not None:
+            self._restore_btn = ctk.CTkButton(
+                btn_frame,
+                text="Restore Original",
+                width=130,
+                height=26,
+                font=ctk.CTkFont(size=11),
+                fg_color="gray30",
+                command=self._restore_original,
+            )
+            self._restore_btn.pack(side="right", padx=4)
+
     def update_key_settings(self, settings: Dict[str, Optional[str]]) -> None:
         """Update the key settings data and rebuild the panel."""
         self._key_settings = settings
@@ -424,12 +439,14 @@ class GameRow:
             )
             return
 
+        if self._write_callback is None:
+            # Never write without the guarded path (consent, rules, backup, rollback).
+            messagebox.showwarning("Write Disabled", f"Guarded write is not available for {self.game_name}.")
+            return
         try:
-            result = self._write_callback(self, changes) if self._write_callback else write_settings(
-                self.game_name, self._config_dicts, changes
-            )
+            result = self._write_callback(self, changes)
         except VerificationError as exc:
-            messagebox.showwarning("Write Disabled", str(exc))
+            messagebox.showwarning("Write Disabled", describe_verification_error(exc))
             return
         ok_count = sum(1 for r in result if r["status"] == "ok")
         errors = [r for r in result if r["status"] == "error"]
@@ -441,21 +458,7 @@ class GameRow:
                 f"Errors writing settings for {self.game_name}:\n{msg}",
             )
         elif ok_count > 0:
-            refreshed_config_dicts = []
-            for config_file in self._config_dicts:
-                path = str(config_file.get("expanded_path", ""))
-                if path and os.path.isfile(path) and config_file.get("type") != "registry":
-                    refreshed_config_dicts.append(_try_read_file(path))
-                else:
-                    refreshed_config_dicts.append(config_file)
-            self._config_dicts = refreshed_config_dicts
-            refreshed_settings = extract_key_settings(self.game_name, refreshed_config_dicts)
-            self._key_settings = refreshed_settings
-            for key, val in refreshed_settings.items():
-                if key in self._setting_labels:
-                    self._setting_labels[key].configure(
-                        text=val, text_color=("#1a8a4a", "#5af0a0")
-                    )
+            self._refresh_from_disk()
             messagebox.showinfo(
                 "Applied",
                 f"Settings applied for {self.game_name} ({ok_count} file(s) updated).",
@@ -466,6 +469,47 @@ class GameRow:
                 f"No config files were modified for {self.game_name}.\n"
                 "The game's config format may not be supported for writing yet.",
             )
+
+    def _refresh_from_disk(self) -> None:
+        """Re-read this game's config files and update the displayed values."""
+        refreshed_config_dicts = []
+        for config_file in self._config_dicts:
+            path = str(config_file.get("expanded_path", ""))
+            if path and os.path.isfile(path) and config_file.get("type") != "registry":
+                refreshed_config_dicts.append(_try_read_file(path))
+            else:
+                refreshed_config_dicts.append(config_file)
+        self._config_dicts = refreshed_config_dicts
+        refreshed_settings = extract_key_settings(self.game_name, refreshed_config_dicts)
+        self._key_settings = refreshed_settings
+        for key, val in refreshed_settings.items():
+            if key in self._setting_labels:
+                self._setting_labels[key].configure(
+                    text=val, text_color=("#1a8a4a", "#5af0a0")
+                )
+
+    def _restore_original(self) -> None:
+        """Put back the config files saved before Game Tuner's first write."""
+        if not messagebox.askyesno(
+            "Restore Original Settings",
+            f"Restore {self.game_name}'s config files to how they were before Game Tuner "
+            "first changed them?\n\nAll changes made since then (by Game Tuner or in the game) "
+            "will be replaced. Close the game first.",
+        ):
+            return
+        try:
+            result = self._restore_callback(self)
+        except VerificationError as exc:
+            messagebox.showwarning("Restore Not Done", describe_verification_error(exc))
+            return
+        except OSError as exc:
+            messagebox.showerror("Restore Failed", str(exc))
+            return
+        self._refresh_from_disk()
+        messagebox.showinfo(
+            "Restored",
+            f"Original settings restored for {self.game_name} ({len(result.get('files', []))} file(s)).",
+        )
 
     def update_verification(self, verification: Dict[str, Any]) -> None:
         """Show policy state and disable writes unless explicitly verified."""
@@ -785,6 +829,7 @@ class App:
                 self._scroll_frame, name, platform, install_path,
                 config_files=None, write_callback=self._safe_apply,
                 scroll_canvas=self._scroll_frame._parent_canvas,
+                restore_callback=self._restore_original,
             )
             self._game_rows.append(row)
 
@@ -997,6 +1042,12 @@ class App:
             changes,
             write_settings,
             self._verification_registry,
+            install_path=row.install_path or None,
+        )
+
+    def _restore_original(self, row: GameRow) -> Dict[str, Any]:
+        return restore_pristine_backup(
+            row.game_name, self._verification_registry, install_path=row.install_path or None,
         )
 
     def _enable_test_writes(self) -> None:
@@ -1420,7 +1471,7 @@ class App:
                 result = self._safe_apply(row, game_changes)
             except VerificationError as exc:
                 total_err += 1
-                error_details.append(f"{row.game_name}: {exc}")
+                error_details.append(f"{row.game_name}: {describe_verification_error(exc)}")
                 continue
             for r in result:
                 if r["status"] == "ok":
@@ -1482,7 +1533,7 @@ class App:
                 result = self._safe_apply(row, changes)
             except VerificationError as exc:
                 total_err += 1
-                error_details.append(f"{row.game_name}: {exc}")
+                error_details.append(f"{row.game_name}: {describe_verification_error(exc)}")
                 continue
             for r in result:
                 if r["status"] == "ok":

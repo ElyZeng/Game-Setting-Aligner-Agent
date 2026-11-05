@@ -18,6 +18,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 import requests
 
 from .package import ConfigPackage
+from .process_guard import ProcessLister, running_processes_in
+from .safe_io import atomic_write_bytes, sha256_bytes
 from .settings_parser import FORZA_PRESET_SIGNATURES, extract_key_settings
 from .settings_writer import (
     FORZA_PRESET_V52_FIELDS, GTA_ENHANCED_WRITE_CODES, _detect_parser_type,
@@ -742,7 +744,7 @@ def restore_gta_baseline_no_change(
     except Exception as exc:
         try:
             if target.read_bytes() != original:
-                target.write_bytes(original)
+                atomic_write_bytes(target, original)
             if target.read_bytes() != original:
                 raise VerificationError("restore_rollback_failed")
         except OSError as rollback_error:
@@ -758,6 +760,140 @@ def restore_gta_baseline_no_change(
     }
 
 
+_ERROR_MESSAGES = {
+    "test_write_consent_required": "Writes are disabled. Enable writes first.",
+    "process_check_failed": "Could not check whether the game is running, so nothing was written.",
+    "config_changed_during_write": "The config file changed while preparing the write (is the game or its launcher open?). Nothing was written.",
+    "backup_copy_mismatch": "The backup copy could not be verified, so nothing was written.",
+    "write_validation_failed_restored": "The game did not accept the new values; the original files were restored.",
+    "pristine_backup_not_found": "No original backup exists for this game yet (Game Tuner has not written to it).",
+}
+
+
+def describe_verification_error(exc: BaseException) -> str:
+    """Readable text for a ``VerificationError`` reason code (code kept in brackets)."""
+    reason = str(exc)
+    code, _, detail = reason.partition(":")
+    if code == "game_running":
+        return f"Close the game first - still running: {detail}. Nothing was written. [{reason}]"
+    if code == "write_rollback_failed":
+        return (
+            "Writing failed and the original files could not be fully restored. "
+            f"A verified copy of the originals is kept at: {detail.removeprefix('backup_at:')} [{code}]"
+        )
+    message = _ERROR_MESSAGES.get(code)
+    return f"{message} [{reason}]" if message else reason
+
+
+def ensure_game_not_running(
+    install_path: Optional[str], process_lister: Optional[ProcessLister] = None
+) -> None:
+    """Raise ``game_running:<exe,...>`` if the game is running; fail closed."""
+    if not install_path:
+        return
+    try:
+        running = running_processes_in(install_path, process_lister)
+    except OSError as exc:
+        raise VerificationError("process_check_failed") from exc
+    if running:
+        names = ",".join(sorted({Path(path).name for path in running}))
+        raise VerificationError(f"game_running:{names}")
+
+
+BACKUP_MANIFEST_NAME = "backup-manifest.json"
+PRISTINE_SUFFIX = ".pristine"
+BACKUP_HISTORY_DIR = "history"
+BACKUP_HISTORY_KEEP = 5
+
+
+def _backup_slug(game: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", game)
+
+
+def _text_view(value: Any, exact: bool = False) -> str:
+    """Text as the config readers see it, used only to detect concurrent edits."""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    text = str(value)
+    if exact:
+        return text
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _ensure_pristine_backup(backup_root: Path, staging: Path) -> None:
+    """Keep the very first pre-Game-Tuner copy of a game's config forever.
+
+    Created once, from the first write's staging copy, and never overwritten,
+    so the user can always return to the state before Game Tuner touched it.
+    """
+    pristine = backup_root.with_name(backup_root.name + PRISTINE_SUFFIX)
+    if pristine.exists():
+        return
+    temp = pristine.with_name(pristine.name + ".new")
+    shutil.rmtree(temp, ignore_errors=True)
+    shutil.copytree(staging, temp)
+    temp.replace(pristine)
+
+
+def _rotate_backup(backup_root: Path) -> None:
+    """Move the previous rolling backup into history, keeping the newest few."""
+    if not backup_root.exists():
+        return
+    history = backup_root.parent / BACKUP_HISTORY_DIR / backup_root.name
+    history.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    backup_root.replace(history / stamp)
+    snapshots = sorted(p for p in history.iterdir() if p.is_dir())
+    for old in snapshots[:-BACKUP_HISTORY_KEEP]:
+        shutil.rmtree(old, ignore_errors=True)
+
+
+def pristine_backup_dir(game: str, registry: "VerificationRegistry") -> Path:
+    return registry.data_dir / "backups" / (_backup_slug(game) + PRISTINE_SUFFIX)
+
+
+def restore_pristine_backup(
+    game: str,
+    registry: "VerificationRegistry",
+    install_path: Optional[str] = None,
+    process_lister: Optional[ProcessLister] = None,
+) -> Dict[str, Any]:
+    """Restore the config files saved before Game Tuner's first write.
+
+    Every file is written back byte-for-byte and checked by SHA-256.  Files
+    that did not exist before the first write (``file: null``) are removed.
+    Refused while the game is running when *install_path* is given.
+    """
+    ensure_game_not_running(install_path, process_lister)
+    pristine = pristine_backup_dir(game, registry)
+    manifest_path = pristine / BACKUP_MANIFEST_NAME
+    if not manifest_path.is_file():
+        raise VerificationError("pristine_backup_not_found")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entries = list(manifest.get("files", []))
+    # Verify every backup file before touching anything on disk.
+    payloads: Dict[str, bytes] = {}
+    for entry in entries:
+        if entry.get("file") is None:
+            continue
+        data = (pristine / str(entry["file"])).read_bytes()
+        if sha256_bytes(data) != entry.get("sha256"):
+            raise VerificationError(f"pristine_backup_corrupt:{entry['file']}")
+        payloads[str(entry["file"])] = data
+    restored: List[Dict[str, Any]] = []
+    for entry in entries:
+        target = Path(str(entry["path"]))
+        if entry.get("file") is None:
+            target.unlink(missing_ok=True)
+            restored.append({"path": str(target), "status": "removed"})
+            continue
+        atomic_write_bytes(target, payloads[str(entry["file"])])
+        if sha256_bytes(target.read_bytes()) != entry["sha256"]:
+            raise VerificationError(f"pristine_restore_mismatch:{target}")
+        restored.append({"path": str(target), "status": "restored", "sha256": entry["sha256"]})
+    return {"status": "ok", "game": game, "backup": str(pristine), "files": restored}
+
+
 def backup_and_write(
     game: str,
     platform: str,
@@ -766,10 +902,17 @@ def backup_and_write(
     settings: Dict[str, str],
     write: Callable[[str, List[Dict[str, Any]], Dict[str, str]], List[Dict[str, Any]]],
     registry: VerificationRegistry,
+    install_path: Optional[str] = None,
+    process_lister: Optional[ProcessLister] = None,
 ) -> List[Dict[str, Any]]:
-    """Write only verified configs, restoring the backup if validation fails."""
+    """Write only verified configs, restoring the backup if validation fails.
+
+    When *install_path* is given, the write is refused while any process from
+    that folder is running (the game would overwrite the change on exit).
+    """
     if not registry.test_write_enabled():
         raise VerificationError("test_write_consent_required")
+    ensure_game_not_running(install_path, process_lister)
     gta = "grand theft auto v enhanced" in game.casefold()
     refreshed_files: List[Dict[str, Any]] = []
     for config_file in config_files:
@@ -809,21 +952,29 @@ def backup_and_write(
     ):
         raise VerificationError("f1_incompatible_settings:frame_generation_fullscreen")
 
-    backup_root = registry.data_dir / "backups" / re.sub(r"[^A-Za-z0-9_.-]+", "_", game)
+    backup_root = registry.data_dir / "backups" / _backup_slug(game)
     staging = backup_root.with_name(backup_root.name + ".new")
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True, exist_ok=True)
-    originals: List[tuple[Path, str]] = []
-    gta_originals: Dict[Path, bytes] = {}
+    # Exact on-disk bytes of every file we may touch.  Rollback always writes
+    # these bytes back; it never re-encodes the decoded text view.
+    originals: List[tuple[Path, bytes]] = []
+    backup_entries: List[Dict[str, Any]] = []
     for index, config_file in enumerate(config_files):
         path = Path(str(config_file.get("expanded_path", "")))
         content = config_file.get("content")
         if path.is_file() and isinstance(content, str):
+            data = path.read_bytes()
+            if _text_view(data, exact=gta) != _text_view(content, exact=gta):
+                shutil.rmtree(staging, ignore_errors=True)
+                raise VerificationError("config_changed_during_write")
             backup_file = staging / f"{index}-{path.name}"
             shutil.copy2(path, backup_file)
-            originals.append((path, content))
-            if gta:
-                gta_originals[path] = path.read_bytes()
+            if backup_file.read_bytes() != data:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise VerificationError("backup_copy_mismatch")
+            originals.append((path, data))
+            backup_entries.append({"file": backup_file.name, "path": str(path), "sha256": sha256_bytes(data)})
 
     auxiliary_originals: List[tuple[Path, Optional[bytes]]] = []
     for index, auxiliary_path_text in enumerate(forza_auxiliary_paths(config_files)):
@@ -831,11 +982,55 @@ def backup_and_write(
         if auxiliary_path.is_file():
             backup_file = staging / f"auxiliary-{index}-{auxiliary_path.name}"
             shutil.copy2(auxiliary_path, backup_file)
-            auxiliary_originals.append((auxiliary_path, auxiliary_path.read_bytes()))
+            data = auxiliary_path.read_bytes()
+            auxiliary_originals.append((auxiliary_path, data))
+            backup_entries.append({"file": backup_file.name, "path": str(auxiliary_path), "sha256": sha256_bytes(data)})
         else:
             auxiliary_originals.append((auxiliary_path, None))
+            backup_entries.append({"file": None, "path": str(auxiliary_path), "sha256": None})
 
-    result = _write_gta_enhanced_settings(config_files, settings) if gta else write(game, config_files, settings)
+    backup_manifest = {
+        "format_version": 1,
+        "game": game,
+        "platform": platform,
+        "game_version": game_version,
+        "client_version": getattr(registry, "client_version", None),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "files": backup_entries,
+    }
+    (staging / BACKUP_MANIFEST_NAME).write_text(json.dumps(backup_manifest, indent=2), encoding="utf-8")
+    _ensure_pristine_backup(backup_root, staging)
+
+    def _rollback() -> None:
+        failures: List[str] = []
+        for path, data in originals:
+            try:
+                if not path.is_file() or path.read_bytes() != data:
+                    atomic_write_bytes(path, data)
+                if path.read_bytes() != data:
+                    failures.append(str(path))
+            except OSError:
+                failures.append(str(path))
+        for path, data in auxiliary_originals:
+            try:
+                if data is None:
+                    path.unlink(missing_ok=True)
+                elif not path.is_file() or path.read_bytes() != data:
+                    atomic_write_bytes(path, data)
+                    if path.read_bytes() != data:
+                        failures.append(str(path))
+            except OSError:
+                failures.append(str(path))
+        if failures:
+            # Keep the staging copy: it is now the only safe copy of the originals.
+            raise VerificationError(f"write_rollback_failed:backup_at:{staging}")
+        shutil.rmtree(staging, ignore_errors=True)
+
+    try:
+        result = _write_gta_enhanced_settings(config_files, settings) if gta else write(game, config_files, settings)
+    except BaseException:
+        _rollback()
+        raise
     expected = {key: value for key, value in settings.items() if value is not None}
     reread = []
     for path, _ in originals:
@@ -864,22 +1059,12 @@ def backup_and_write(
         valid = (
             valid and len(result) == 1 and result[0].get("status") == "ok"
             and Path(result[0]["path"]) == originals[0][0]
-            and originals[0][0].read_bytes() != gta_originals[originals[0][0]]
+            and originals[0][0].read_bytes() != originals[0][1]
         )
     if not valid:
-        for path, content in originals:
-            if gta:
-                path.write_bytes(gta_originals[path])
-            else:
-                path.write_text(content, encoding="utf-8")
-        for path, content in auxiliary_originals:
-            if content is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_bytes(content)
-        shutil.rmtree(staging, ignore_errors=True)
+        _rollback()
         raise VerificationError("write_validation_failed_restored")
 
-    shutil.rmtree(backup_root, ignore_errors=True)
+    _rotate_backup(backup_root)
     staging.replace(backup_root)
     return result

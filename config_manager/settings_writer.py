@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .safe_io import atomic_write_bytes, atomic_write_text
 from .settings_parser import (
     RESOLUTION,
     SCREEN_MODE,
@@ -37,10 +38,8 @@ QUICK_PRESET = "quick_preset"
 # ── Helpers ──────────────────────────────────────────────────────────
 
 def _safe_write(path: str, content: str) -> None:
-    """Write *content* to *path*, creating parent directories if needed."""
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+    """Atomically write *content* to *path*, keeping its newline/BOM style."""
+    atomic_write_text(path, content)
 
 def forza_auxiliary_paths(config_files: List[Dict[str, Any]]) -> List[str]:
     """Return Forza files that persist settings outside UserConfigSelections."""
@@ -1259,7 +1258,7 @@ def _write_gta_enhanced_settings(
         patched = _write_gta_enhanced_xml(content, settings)
         if patched == content:
             raise ValueError("GTA V Enhanced write would not change config")
-        path.write_bytes(patched.encode("utf-8"))
+        atomic_write_bytes(path, patched.encode("utf-8"))
         return [{"path": str(path), "status": "ok", "detail": "GTA V Enhanced settings written"}]
     except (OSError, UnicodeError, ValueError, ET.ParseError) as exc:
         return [{"path": str(path), "status": "error", "detail": str(exc)}]
@@ -1543,8 +1542,7 @@ def write_settings(
                     if SCREEN_MODE in to_write:
                         fullscreen_value = bytes([1 if to_write[SCREEN_MODE] == "Fullscreen" else 0])
                         for auxiliary_path in forza_auxiliary_paths(config_files):
-                            with open(auxiliary_path, "wb") as auxiliary_file:
-                                auxiliary_file.write(fullscreen_value)
+                            atomic_write_bytes(auxiliary_path, fullscreen_value)
                             results.append({"path": auxiliary_path, "status": "ok", "detail": "Forza fullscreen choice written"})
                 except Exception as e:
                     results.append({"path": path, "status": "error", "detail": str(e)})
