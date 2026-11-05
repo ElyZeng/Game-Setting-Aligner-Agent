@@ -19,8 +19,9 @@ import requests
 
 from .package import ConfigPackage
 from .process_guard import ProcessLister, running_processes_in
+from . import anticheat, registry_io
 from .safe_io import atomic_write_bytes, sha256_bytes
-from .settings_parser import FORZA_PRESET_SIGNATURES, extract_key_settings
+from .settings_parser import FORZA_PRESET_SIGNATURES, UPSCALING, extract_key_settings, setting_options_for_game
 from .settings_writer import (
     FORZA_PRESET_V52_FIELDS, GTA_ENHANCED_WRITE_CODES, _detect_parser_type,
     _write_forza_xml, _write_gta_enhanced_settings, _write_gta_enhanced_xml,
@@ -30,6 +31,9 @@ from .settings_writer import (
 logger = logging.getLogger(__name__)
 
 MANIFEST_FORMAT_VERSION = 1
+# Bump when DISCLAIMER.md changes in substance: users must accept it again
+# before writes are re-enabled.
+DISCLAIMER_VERSION = "2026-11-05"
 STATUSES = frozenset({"candidate", "read_verified", "write_candidate", "write_verified", "deprecated"})
 DEFAULT_RELEASE_API = "https://api.github.com/repos/ElyZeng/Game-Setting-Aligner-Agent/releases/latest"
 OFFLINE_BUNDLE_FILES = frozenset({"verified-games.json", "verified-games.json.sha256"})
@@ -281,23 +285,70 @@ class VerificationRegistry:
         self.current_path = self.data_dir / "verified-games.json"
         self.previous_path = self.data_dir / "verified-games.previous.json"
         self.test_write_consent_path = self.data_dir / "test-write-consent.json"
+        self.game_consent_path = self.data_dir / "game-consent.json"
         self.log_path = configure_file_logging(self.data_dir)
 
-    def test_write_enabled(self) -> bool:
-        """Return whether this user explicitly enabled experimental writes."""
+    def _write_consent_record(self) -> Dict[str, Any]:
         try:
             with self.test_write_consent_path.open(encoding="utf-8") as handle:
-                return bool(json.load(handle).get("enabled"))
+                record = json.load(handle)
+            return record if isinstance(record, dict) else {}
         except (OSError, ValueError):
-            return False
+            return {}
+
+    def test_write_enabled(self) -> bool:
+        """Writes are enabled and the user accepted the *current* disclaimer."""
+        record = self._write_consent_record()
+        return bool(record.get("enabled")) and record.get("disclaimer_version") == DISCLAIMER_VERSION
+
+    def disclaimer_outdated(self) -> bool:
+        """Writes were enabled under an older disclaimer and need re-acceptance."""
+        record = self._write_consent_record()
+        return bool(record.get("enabled")) and record.get("disclaimer_version") != DISCLAIMER_VERSION
 
     def enable_test_writes(self) -> None:
-        """Persist the user's explicit acknowledgement of experimental writes."""
+        """Persist the user's acceptance of the disclaimer and enable writes."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.test_write_consent_path.write_text(
-            json.dumps({"enabled": True, "acknowledged_at": datetime.now(timezone.utc).isoformat()}),
+            json.dumps({
+                "enabled": True,
+                "disclaimer_version": DISCLAIMER_VERSION,
+                "acknowledged_at": datetime.now(timezone.utc).isoformat(),
+            }),
             encoding="utf-8",
         )
+
+    @staticmethod
+    def _game_consent_key(game: str, platform: str, game_version: str) -> str:
+        return f"{_normalise_title(game)}|{str(platform).casefold()}|{game_version}"
+
+    def _game_consents(self) -> Dict[str, Any]:
+        try:
+            with self.game_consent_path.open(encoding="utf-8") as handle:
+                data = json.load(handle)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def game_consent_granted(self, game: str, platform: str, game_version: str) -> bool:
+        """The user agreed to writes for this exact game, platform and version."""
+        entry = self._game_consents().get(self._game_consent_key(game, platform, game_version))
+        return isinstance(entry, dict) and entry.get("disclaimer_version") == DISCLAIMER_VERSION
+
+    def grant_game_consent(self, game: str, platform: str, game_version: str, status: str = "") -> None:
+        data = self._game_consents()
+        data[self._game_consent_key(game, platform, game_version)] = {
+            "game": game, "platform": platform, "version": game_version, "status": status,
+            "disclaimer_version": DISCLAIMER_VERSION,
+            "accepted_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_bytes(self.game_consent_path, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
+
+    def revoke_game_consent(self, game: str, platform: str, game_version: str) -> None:
+        data = self._game_consents()
+        if data.pop(self._game_consent_key(game, platform, game_version), None) is not None:
+            atomic_write_bytes(self.game_consent_path, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
 
     def disable_test_writes(self) -> None:
         """Disable experimental writes without deleting verification data."""
@@ -509,6 +560,44 @@ class VerificationRegistry:
         return {"status": "candidate", "reason": "fingerprint_mismatch", "rule": None}
 
 
+def _option_text(value: Any) -> str:
+    """Option value without GUI annotations such as ' (recommended ...)'."""
+    return str(value).split(" (recommended", 1)[0].strip()
+
+
+def check_values_allowed(
+    game: str,
+    config_files: List[Dict[str, Any]],
+    settings: Dict[str, Any],
+    rule: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Every written value must be one the game itself offers (UI-equivalent).
+
+    The allowed list comes from the rule's ``supported_values`` when present,
+    otherwise from the same per-game option lists the GUI dropdowns use.
+    Re-writing the value that is already in the file is always allowed.
+    """
+    rule = rule or {}
+    supported_values = rule.get("supported_values")
+    if not isinstance(supported_values, dict):
+        supported_values = {}
+    current = extract_key_settings(game, config_files) if config_files else {}
+    method = settings.get(UPSCALING) or current.get(UPSCALING)
+    for key, value in settings.items():
+        if value is None:
+            continue
+        explicit = supported_values.get(key)
+        if isinstance(explicit, list):
+            allowed = list(explicit)
+        else:
+            allowed = setting_options_for_game(game, key, current.get(key), upscaling_method=method)
+        allowed_text = {_option_text(option) for option in allowed if option not in (None, "—")}
+        if current.get(key) not in (None, "", "N/A"):
+            allowed_text.add(_option_text(current[key]))
+        if _option_text(value) not in allowed_text:
+            raise VerificationError(f"write_value_not_allowed:{key}={value}")
+
+
 def _check_write_rule(
     game: str,
     platform: str,
@@ -527,6 +616,7 @@ def _check_write_rule(
         unsupported = sorted(set(settings) - set(supported_settings))
         if unsupported:
             raise VerificationError(f"write_setting_not_allowed:{','.join(unsupported)}")
+    check_values_allowed(game, config_files, settings, rule)
 
     if game == "Forza Horizon 6" and "quick_preset" in settings:
         values = rule.get("supported_values")
@@ -761,12 +851,14 @@ def restore_gta_baseline_no_change(
 
 
 _ERROR_MESSAGES = {
-    "test_write_consent_required": "Writes are disabled. Enable writes first.",
+    "test_write_consent_required": "Writes are disabled. Enable writes and accept the disclaimer first.",
+    "game_consent_required": "Confirm writes for this game and version first.",
     "process_check_failed": "Could not check whether the game is running, so nothing was written.",
     "config_changed_during_write": "The config file changed while preparing the write (is the game or its launcher open?). Nothing was written.",
     "backup_copy_mismatch": "The backup copy could not be verified, so nothing was written.",
     "write_validation_failed_restored": "The game did not accept the new values; the original files were restored.",
     "pristine_backup_not_found": "No original backup exists for this game yet (Game Tuner has not written to it).",
+    "anticheat_check_failed": "Could not check the game folder for anti-cheat software, so nothing was written.",
 }
 
 
@@ -781,8 +873,72 @@ def describe_verification_error(exc: BaseException) -> str:
             "Writing failed and the original files could not be fully restored. "
             f"A verified copy of the originals is kept at: {detail.removeprefix('backup_at:')} [{code}]"
         )
+    if code == "anticheat_not_reviewed":
+        return (
+            f"Anti-cheat software detected ({detail}). Writing is disabled for this game until it has been "
+            f"reviewed and approved by the maintainers; reading still works. [{reason}]"
+        )
+    if code == "anticheat_changed_since_review":
+        return (
+            f"The game's anti-cheat components changed since it was reviewed ({detail}). Writing is disabled "
+            f"until it is reviewed again. [{reason}]"
+        )
+    if code == "anticheat_scope":
+        return f"These settings are not approved for this anti-cheat game: {detail}. [{reason}]"
+    if code == "write_value_not_allowed":
+        return f"This value is not one the game offers in its own menu: {detail}. Nothing was written. [{reason}]"
     message = _ERROR_MESSAGES.get(code)
     return f"{message} [{reason}]" if message else reason
+
+
+def ensure_anticheat_reviewed(
+    install_path: Optional[str],
+    rule: Optional[Dict[str, Any]],
+    settings: Dict[str, Any],
+    detector: Optional[Callable[[str], Iterable[str]]] = None,
+) -> None:
+    """Refuse writes to games with anti-cheat unless the rule records an approved review."""
+    if not install_path:
+        return
+    try:
+        detected = list((detector or anticheat.detect_anticheat)(install_path))
+    except OSError as exc:
+        raise VerificationError("anticheat_check_failed") from exc
+    reason = anticheat.check_write_allowed(
+        detected, rule, [key for key, value in settings.items() if value is not None]
+    )
+    if reason:
+        raise VerificationError(reason)
+
+
+def apply_anticheat_policy(
+    verification: Dict[str, Any],
+    install_path: Optional[str],
+    detector: Optional[Callable[[str], Iterable[str]]] = None,
+) -> Dict[str, Any]:
+    """Status shown to the user, with the anti-cheat policy applied.
+
+    A writable status becomes ``read_verified`` when anti-cheat is detected
+    without a matching approved review; with a review, the writable settings
+    are limited to the reviewed scope.  Detection errors also downgrade.
+    """
+    if verification.get("status") not in {"write_candidate", "write_verified"} or not install_path:
+        return verification
+    try:
+        detected = list((detector or anticheat.detect_anticheat)(install_path))
+    except OSError:
+        return {**verification, "status": "read_verified", "reason": "anticheat_check_failed"}
+    if not detected:
+        return verification
+    rule = dict(verification.get("rule") or {})
+    reason = anticheat.check_write_allowed(detected, rule, [])
+    if reason:
+        return {**verification, "status": "read_verified", "reason": reason, "anticheat": detected}
+    scope = set(rule.get("anticheat", {}).get("scope") or [])
+    supported = rule.get("supported_settings")
+    if isinstance(supported, list):
+        rule["supported_settings"] = [key for key in supported if key in scope]
+    return {**verification, "rule": rule, "anticheat": detected}
 
 
 def ensure_game_not_running(
@@ -804,6 +960,10 @@ BACKUP_MANIFEST_NAME = "backup-manifest.json"
 PRISTINE_SUFFIX = ".pristine"
 BACKUP_HISTORY_DIR = "history"
 BACKUP_HISTORY_KEEP = 5
+
+
+def _registry_path(config_file: Dict[str, Any]) -> str:
+    return str(config_file.get("registry_path") or config_file.get("expanded_path") or "")
 
 
 def _backup_slug(game: str) -> str:
@@ -857,6 +1017,7 @@ def restore_pristine_backup(
     registry: "VerificationRegistry",
     install_path: Optional[str] = None,
     process_lister: Optional[ProcessLister] = None,
+    registry_backend: Any = None,
 ) -> Dict[str, Any]:
     """Restore the config files saved before Game Tuner's first write.
 
@@ -876,12 +1037,25 @@ def restore_pristine_backup(
     for entry in entries:
         if entry.get("file") is None:
             continue
+        if entry.get("registry"):
+            raw = (pristine / str(entry["file"])).read_bytes()
+            if sha256_bytes(raw) != entry.get("sha256"):
+                raise VerificationError(f"pristine_backup_corrupt:{entry['file']}")
+            payloads[str(entry["file"])] = raw
+            continue
         data = (pristine / str(entry["file"])).read_bytes()
         if sha256_bytes(data) != entry.get("sha256"):
             raise VerificationError(f"pristine_backup_corrupt:{entry['file']}")
         payloads[str(entry["file"])] = data
     restored: List[Dict[str, Any]] = []
     for entry in entries:
+        if entry.get("registry"):
+            snap = json.loads(payloads[str(entry["file"])].decode("utf-8"))
+            left = registry_io.restore_snapshot(snap, registry_backend or registry_io.default_backend())
+            if left:
+                raise VerificationError(f"pristine_restore_mismatch:{entry['registry']}")
+            restored.append({"path": entry["registry"], "status": "restored"})
+            continue
         target = Path(str(entry["path"]))
         if entry.get("file") is None:
             target.unlink(missing_ok=True)
@@ -904,6 +1078,8 @@ def backup_and_write(
     registry: VerificationRegistry,
     install_path: Optional[str] = None,
     process_lister: Optional[ProcessLister] = None,
+    registry_backend: Any = None,
+    anticheat_detector: Optional[Callable[[str], Iterable[str]]] = None,
 ) -> List[Dict[str, Any]]:
     """Write only verified configs, restoring the backup if validation fails.
 
@@ -918,7 +1094,15 @@ def backup_and_write(
     for config_file in config_files:
         refreshed = dict(config_file)
         path = Path(str(config_file.get("expanded_path", "")))
-        if config_file.get("type") != "registry":
+        if config_file.get("type") == "registry":
+            if config_file.get("found"):
+                reg_path = _registry_path(config_file)
+                try:
+                    fresh = registry_io.read_key_as_json(reg_path, registry_backend or registry_io.default_backend())
+                except (OSError, registry_io.RegistryWriteError) as exc:
+                    raise VerificationError("registry_read_failed") from exc
+                refreshed.update({"content": fresh["content"], "found": fresh["found"], "registry_path": reg_path})
+        else:
             if path.is_file():
                 try:
                     refreshed["content"] = (
@@ -936,6 +1120,13 @@ def backup_and_write(
     config_files = refreshed_files
     fingerprint = game_structural_fingerprint(game, config_files)
     _check_write_rule(game, platform, game_version, fingerprint, config_files, settings, registry)
+    game_consent = getattr(registry, "game_consent_granted", None)
+    if callable(game_consent) and not game_consent(game, platform, game_version):
+        raise VerificationError("game_consent_required")
+    ensure_anticheat_reviewed(
+        install_path, (registry.status_for(game, platform, game_version, fingerprint) or {}).get("rule"),
+        settings, anticheat_detector,
+    )
     if gta or (game.casefold() == "forza horizon 6" and set(settings) == {"quick_preset"}):
         preflight_write(game, platform, game_version, config_files, settings, registry)
     if (
@@ -989,6 +1180,21 @@ def backup_and_write(
             auxiliary_originals.append((auxiliary_path, None))
             backup_entries.append({"file": None, "path": str(auxiliary_path), "sha256": None})
 
+    registry_snapshots: List[Dict[str, Any]] = []
+    for index, config_file in enumerate(config_files):
+        if config_file.get("type") != "registry" or not config_file.get("found"):
+            continue
+        reg_path = _registry_path(config_file)
+        try:
+            snap = registry_io.snapshot(reg_path, registry_backend or registry_io.default_backend())
+        except (OSError, registry_io.RegistryWriteError) as exc:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise VerificationError("registry_snapshot_failed") from exc
+        snap_name = f"registry-{index}.json"
+        (staging / snap_name).write_text(json.dumps(snap, indent=2), encoding="utf-8")
+        registry_snapshots.append(snap)
+        backup_entries.append({"registry": reg_path, "file": snap_name, "sha256": sha256_bytes((staging / snap_name).read_bytes())})
+
     backup_manifest = {
         "format_version": 1,
         "game": game,
@@ -1021,6 +1227,13 @@ def backup_and_write(
                         failures.append(str(path))
             except OSError:
                 failures.append(str(path))
+        for snap in registry_snapshots:
+            try:
+                left = registry_io.restore_snapshot(snap, registry_backend or registry_io.default_backend())
+            except (OSError, registry_io.RegistryWriteError):
+                left = ["restore_error"]
+            if left:
+                failures.append(f"{snap['path']}:{','.join(left)}")
         if failures:
             # Keep the staging copy: it is now the only safe copy of the originals.
             raise VerificationError(f"write_rollback_failed:backup_at:{staging}")
@@ -1038,6 +1251,11 @@ def backup_and_write(
             content = path.read_bytes().decode("utf-8") if gta else path.read_text(encoding="utf-8")
             reread.append({"expanded_path": str(path), "found": True, "content": content})
         except (OSError, UnicodeError):
+            pass
+    for snap in registry_snapshots:
+        try:
+            reread.append(registry_io.read_key_as_json(snap["path"], registry_backend or registry_io.default_backend()))
+        except (OSError, registry_io.RegistryWriteError):
             pass
     parsed = extract_key_settings(game, reread)
     def _setting_matches(key: str, expected_value: Any) -> bool:

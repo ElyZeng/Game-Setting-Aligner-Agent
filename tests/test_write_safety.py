@@ -348,3 +348,274 @@ def test_api_import_requires_token(api_server):
     port, _calls = api_server
     status, _headers, _body = _request(port, "POST", "/import", {"package": "p.json"})
     assert status == 401
+
+
+# ── S8: no writer guessing from file extensions ─────────────────────
+
+
+def test_unknown_xml_is_not_sent_to_forza_writer(tmp_path):
+    from config_manager.settings_writer import _detect_parser_type
+
+    files = [{"expanded_path": str(tmp_path / "settings.xml"), "found": True, "content": "<a/>"}]
+    assert _detect_parser_type("Some XML Game", files) == "unknown"
+    files = [{"expanded_path": str(tmp_path / "config.ini"), "found": True, "content": "[x]\na=1\n"}]
+    assert _detect_parser_type("Some INI Game", files) == "unknown"
+    files = [{"expanded_path": str(tmp_path / "u.json"), "found": True, "content": '{"data": []}'}]
+    assert _detect_parser_type("Some JSON Game", files) == "unknown"
+    assert _detect_parser_type("Street Fighter 6", files) == "unknown"
+
+
+# ── S6: values must be ones the game offers ─────────────────────────
+
+
+def test_value_outside_game_options_is_refused(tmp_path):
+    path, files = _game_file(tmp_path, INI_CRLF.encode())
+    registry = _registry(tmp_path, settings=("vsync", "frame_limit"))
+    for settings in ({"vsync": "Maybe"}, {"frame_limit": "999 FPS"}):
+        with pytest.raises(VerificationError, match="write_value_not_allowed"):
+            backup_and_write(GAME, "Steam", "1", files, settings, write_settings, registry)
+    assert path.read_bytes() == INI_CRLF.encode()
+
+
+def test_supported_values_in_rule_restrict_further(tmp_path):
+    _path, files = _game_file(tmp_path, INI_CRLF.encode())
+    registry = _registry(tmp_path, settings=("frame_limit",))
+    rule = registry.status_for()["rule"]
+    rule["supported_values"] = {"frame_limit": ["30 FPS"]}
+    registry.status_for = lambda *_a: {"status": "write_candidate", "reason": "verified", "rule": rule}
+    with pytest.raises(VerificationError, match="write_value_not_allowed:frame_limit=120 FPS"):
+        backup_and_write(GAME, "Steam", "1", files, {"frame_limit": "120 FPS"}, write_settings, registry)
+    result = backup_and_write(GAME, "Steam", "1", files, {"frame_limit": "30 FPS"}, write_settings, registry)
+    assert result[0]["status"] == "ok"
+
+
+# ── anti-cheat ──────────────────────────────────────────────────────
+
+
+def test_detect_anticheat_markers(tmp_path):
+    from config_manager.anticheat import detect_anticheat
+
+    (tmp_path / "EasyAntiCheat").mkdir()
+    (tmp_path / "Binaries" / "Win64").mkdir(parents=True)
+    (tmp_path / "Binaries" / "Win64" / "BEService_x64.exe").write_bytes(b"")
+    (tmp_path / "pb").mkdir()  # generic folder name without PunkBuster binaries
+    assert detect_anticheat(str(tmp_path)) == ["BattlEye", "EasyAntiCheat"]
+    assert detect_anticheat(str(tmp_path / "missing")) == []
+
+
+def test_anticheat_game_is_read_only_without_review(tmp_path):
+    path, files = _game_file(tmp_path, INI_CRLF.encode())
+    install = tmp_path / "install"
+    install.mkdir()
+    with pytest.raises(VerificationError, match="anticheat_not_reviewed:EasyAntiCheat"):
+        backup_and_write(
+            GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, _registry(tmp_path),
+            install_path=str(install), process_lister=lambda: [],
+            anticheat_detector=lambda _p: ["EasyAntiCheat"],
+        )
+    assert path.read_bytes() == INI_CRLF.encode()
+
+
+def test_anticheat_review_allows_scope_and_detects_changes(tmp_path):
+    _path, files = _game_file(tmp_path, INI_CRLF.encode())
+    install = tmp_path / "install"
+    install.mkdir()
+    rule = {
+        "supported_settings": ["vsync", "frame_limit"],
+        "anticheat": {"detected": ["EasyAntiCheat"], "review": "approved", "scope": ["vsync"]},
+    }
+    registry = _registry(tmp_path)
+    registry.status_for = lambda *_a: {"status": "write_candidate", "reason": "verified", "rule": rule}
+    common = dict(install_path=str(install), process_lister=lambda: [])
+
+    with pytest.raises(VerificationError, match="anticheat_scope:frame_limit"):
+        backup_and_write(GAME, "Steam", "1", files, {"frame_limit": "30 FPS"}, write_settings, registry,
+                         anticheat_detector=lambda _p: ["EasyAntiCheat"], **common)
+    with pytest.raises(VerificationError, match="anticheat_changed_since_review"):
+        backup_and_write(GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, registry,
+                         anticheat_detector=lambda _p: ["BattlEye", "EasyAntiCheat"], **common)
+    result = backup_and_write(GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, registry,
+                              anticheat_detector=lambda _p: ["EasyAntiCheat"], **common)
+    assert result[0]["status"] == "ok"
+
+
+def test_apply_anticheat_policy_for_display():
+    from config_manager.verification import apply_anticheat_policy
+
+    base = {"status": "write_candidate", "reason": "verified", "rule": {"supported_settings": ["vsync", "resolution"]}}
+    shown = apply_anticheat_policy(base, "C:/x", detector=lambda _p: ["BattlEye"])
+    assert shown["status"] == "read_verified" and shown["reason"].startswith("anticheat_not_reviewed")
+    reviewed = {**base, "rule": {**base["rule"], "anticheat": {
+        "detected": ["BattlEye"], "review": "approved", "scope": ["vsync"]}}}
+    shown = apply_anticheat_policy(reviewed, "C:/x", detector=lambda _p: ["BattlEye"])
+    assert shown["status"] == "write_candidate" and shown["rule"]["supported_settings"] == ["vsync"]
+    assert apply_anticheat_policy(base, "C:/x", detector=lambda _p: []) is base
+
+
+# ── consent ─────────────────────────────────────────────────────────
+
+
+def test_real_registry_requires_current_disclaimer_and_game_consent(tmp_path):
+    from config_manager import verification as v
+
+    path, files = _game_file(tmp_path, INI_CRLF.encode())
+    registry = v.VerificationRegistry("0.08.23", data_dir=tmp_path / "rules")
+    registry.status_for = lambda *_a: {"status": "write_candidate", "reason": "verified",
+                                       "rule": {"supported_settings": ["vsync"]}}
+
+    # Old-style consent without a disclaimer version no longer enables writes.
+    registry.data_dir.mkdir(parents=True, exist_ok=True)
+    registry.test_write_consent_path.write_text('{"enabled": true}', encoding="utf-8")
+    assert not registry.test_write_enabled() and registry.disclaimer_outdated()
+    with pytest.raises(VerificationError, match="test_write_consent_required"):
+        backup_and_write(GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, registry)
+
+    registry.enable_test_writes()
+    with pytest.raises(VerificationError, match="game_consent_required"):
+        backup_and_write(GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, registry)
+
+    registry.grant_game_consent(GAME, "Steam", "1")
+    assert not registry.game_consent_granted(GAME, "Steam", "2")  # new version asks again
+    result = backup_and_write(GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, registry)
+    assert result[0]["status"] == "ok"
+    registry.revoke_game_consent(GAME, "Steam", "1")
+    assert not registry.game_consent_granted(GAME, "Steam", "1")
+
+
+# ── S7: registry ────────────────────────────────────────────────────
+
+
+class _FakeKey:
+    def __init__(self, path):
+        self.path = path
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+
+class FakeWinreg:
+    HKEY_CURRENT_USER = "HKCU"
+    HKEY_LOCAL_MACHINE = "HKLM"
+    KEY_READ = 1
+    KEY_SET_VALUE = 2
+    REG_SZ, REG_EXPAND_SZ, REG_BINARY, REG_DWORD, REG_QWORD = 1, 2, 3, 4, 11
+
+    def __init__(self, keys):
+        self.keys = keys  # {"HKCU\\Software\\Game": {name: (value, type)}}
+        self.set_calls = []
+
+    def OpenKey(self, hive, subkey, _reserved, _access):
+        path = f"{hive}\\{subkey}"
+        if path not in self.keys:
+            raise FileNotFoundError(path)
+        return _FakeKey(path)
+
+    def EnumValue(self, key, index):
+        items = list(self.keys[key.path].items())
+        if index >= len(items):
+            raise OSError("no more")
+        name, (value, value_type) = items[index]
+        return name, value, value_type
+
+    def EnumKey(self, key, index):
+        prefix = key.path + "\\"
+        children = sorted({p[len(prefix):].split("\\")[0] for p in self.keys if p.startswith(prefix)})
+        if index >= len(children):
+            raise OSError("no more")
+        return children[index]
+
+    def QueryValueEx(self, key, name):
+        if name not in self.keys[key.path]:
+            raise FileNotFoundError(name)
+        return self.keys[key.path][name]
+
+    def SetValueEx(self, key, name, _reserved, value_type, value):
+        self.set_calls.append((key.path, name, value_type, value))
+        self.keys[key.path][name] = (value, value_type)
+
+
+def _registry_game(monkeypatch):
+    from config_manager import registry_io
+
+    fake = FakeWinreg({
+        "HKCU\\Software\\Studio\\Game": {"Version": ("1.0", 1)},
+        "HKCU\\Software\\Studio\\Game\\Graphics": {
+            "VSync": (1, 4), "FullscreenWidth": (1920, 4), "FullscreenHeight": (1080, 4),
+            "Blob": (b"\x00\x01binary", 3), "Fullscreen": (1, 4),
+        },
+    })
+    monkeypatch.setattr(registry_io, "default_backend", lambda: fake)
+    reg_path = "HKEY_CURRENT_USER\\Software\\Studio\\Game"
+    entry = registry_io.read_key_as_json(reg_path, fake)
+    return fake, reg_path, [entry]
+
+
+def test_registry_write_changes_only_target_value_and_keeps_type(tmp_path, monkeypatch):
+    fake, _reg_path, files = _registry_game(monkeypatch)
+    result = backup_and_write("Shadow of the Tomb Raider", "Steam", "1", files, {"vsync": "Off"},
+                              write_settings, _registry(tmp_path), registry_backend=fake)
+    assert result[0]["status"] == "ok", result
+    assert fake.set_calls == [("HKCU\\Software\\Studio\\Game\\Graphics", "VSync", 4, 0)]
+    assert fake.keys["HKCU\\Software\\Studio\\Game\\Graphics"]["Blob"] == (b"\x00\x01binary", 3)
+
+
+def test_registry_failed_validation_restores_snapshot(tmp_path, monkeypatch):
+    fake, _reg_path, files = _registry_game(monkeypatch)
+
+    def bad_write(_game, _files, _settings):
+        fake.keys["HKCU\\Software\\Studio\\Game\\Graphics"]["VSync"] = (7, 4)
+        fake.keys["HKCU\\Software\\Studio\\Game\\Graphics"]["Blob"] = (b"zz", 3)
+        return [{"path": "x", "status": "ok", "detail": "fake"}]
+
+    with pytest.raises(VerificationError, match="write_validation_failed_restored"):
+        backup_and_write("Shadow of the Tomb Raider", "Steam", "1", files, {"vsync": "Off"},
+                         bad_write, _registry(tmp_path), registry_backend=fake)
+    graphics = fake.keys["HKCU\\Software\\Studio\\Game\\Graphics"]
+    assert graphics["VSync"] == (1, 4) and graphics["Blob"] == (b"\x00\x01binary", 3)
+
+
+def test_registry_refuses_binary_and_missing_values(monkeypatch):
+    from config_manager import registry_io
+
+    fake, reg_path, _files = _registry_game(monkeypatch)
+    with pytest.raises(registry_io.RegistryWriteError, match="registry_type_not_writable"):
+        registry_io.write_changes(reg_path, {"Graphics": {"VSync": 0, "Blob": "x"}}, fake)
+    with pytest.raises(registry_io.RegistryWriteError, match="registry_value_missing"):
+        registry_io.write_changes(reg_path, {"Graphics": {"NewValue": 1}}, fake)
+    with pytest.raises(registry_io.RegistryWriteError, match="registry_bad_value"):
+        registry_io.write_changes(reg_path, {"Graphics": {"VSync": "1"}}, fake)
+    assert fake.set_calls == []  # validation happens before any write
+
+
+def test_registry_pristine_restore(tmp_path, monkeypatch):
+    fake, _reg_path, files = _registry_game(monkeypatch)
+    registry = _registry(tmp_path)
+    backup_and_write("Shadow of the Tomb Raider", "Steam", "1", files, {"vsync": "Off"},
+                     write_settings, registry, registry_backend=fake)
+    assert fake.keys["HKCU\\Software\\Studio\\Game\\Graphics"]["VSync"] == (0, 4)
+    restore_pristine_backup("Shadow of the Tomb Raider", registry, registry_backend=fake)
+    assert fake.keys["HKCU\\Software\\Studio\\Game\\Graphics"]["VSync"] == (1, 4)
+
+
+# ── package import keeps a backup ───────────────────────────────────
+
+
+def test_package_import_backs_up_overwritten_files(tmp_path):
+    from config_manager.package import ConfigPackage
+
+    target = tmp_path / "game" / "settings.ini"
+    target.parent.mkdir()
+    target.write_bytes(b"a=1\r\nb=2\r\n")
+    package = tmp_path / "pkg.json"
+    package.write_text(json.dumps({"version": 2, "games": {"G": {"config_files": [
+        {"expanded_path": str(target), "content": "a=9\nb=2\n", "found": True},
+    ]}}}), encoding="utf-8")
+
+    pkg = ConfigPackage(backup_root=tmp_path / "imports")
+    assert pkg.import_package(str(package)) == {"G": [str(target)]}
+    assert target.read_bytes() == b"a=9\r\nb=2\r\n"  # existing CRLF kept
+    manifest = json.loads((pkg.last_backup / "backup-manifest.json").read_text(encoding="utf-8"))
+    assert (pkg.last_backup / manifest["files"][0]["file"]).read_bytes() == b"a=1\r\nb=2\r\n"

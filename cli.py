@@ -156,11 +156,16 @@ def cmd_apply(args):
     games = _scan_all()
     matched = next((game for game in games if game.get("name", "").lower() == args.game.lower()), {})
     registry = VerificationRegistry(__version__)
+    platform = matched.get("platform", "Unknown")
+    game_version = detect_game_version(matched.get("install_path", ""))
     if args.confirm_test_write:
+        # The flag names this game explicitly, so it also covers per-game consent
+        # for the detected version (see DISCLAIMER.md).
         registry.enable_test_writes()
+        registry.grant_game_consent(args.game, platform, game_version, status="cli")
     install_path = args.install_path or matched.get("install_path", "")
     results = backup_and_write(
-        args.game, matched.get("platform", "Unknown"), detect_game_version(matched.get("install_path", "")),
+        args.game, platform, game_version,
         config_files, settings, write_settings, registry, install_path=install_path or None,
     )
     _json_out(results)
@@ -399,7 +404,8 @@ def build_parser():
     s.add_argument("--config-json", help="Path to a JSON file with config file data (skip auto-detect)")
     s.add_argument(
         "--confirm-test-write", action="store_true",
-        help="Acknowledge and enable experimental write mode for this Windows user",
+        help="Accept DISCLAIMER.md, enable writes for this Windows user and confirm writes "
+             "for this game and its detected version",
     )
     s.set_defaults(func=cmd_apply)
 

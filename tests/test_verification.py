@@ -21,6 +21,13 @@ from config_manager.verification import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _per_game_consent_granted(monkeypatch):
+    """These tests cover rules, backups and restores; the per-game consent
+    gate itself is covered in test_write_safety.py."""
+    monkeypatch.setattr(VerificationRegistry, "game_consent_granted", lambda *_args: True)
+
+
 def _reviewed_rules():
     rules_path = Path(__file__).resolve().parents[1] / "release-assets" / "forza-write-candidate-rules.json"
     return json.loads(rules_path.read_text(encoding="utf-8"))

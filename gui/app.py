@@ -25,6 +25,7 @@ from config_manager import (
     describe_verification_error, export_diagnostic_package, game_structural_fingerprint,
     restore_pristine_backup,
 )
+from config_manager.verification import apply_anticheat_policy
 from main import __version__
 from config_manager.config_exporter import (
     _try_read_file,
@@ -55,6 +56,36 @@ _UNABLE_TO_CHECK = object()
 
 def _open_export_folder(output_path: Any) -> None:
     os.startfile(output_path.parent)
+
+
+DISCLAIMER_SUMMARY = (
+    "Game Tuner modifies game settings files. Before enabling writes, please read DISCLAIMER.md.\n\n"
+    "- Only settings the game itself offers in its menu are written.\n"
+    "- Files are backed up before every write; the pre-Game-Tuner copy is kept and can be restored "
+    "with \"Restore Original\". Failed writes are rolled back automatically.\n"
+    "- Writes are refused while the game is running. Cloud sync may overwrite changes later.\n"
+    "- \"Write-safe\" means Game Tuner can write and restore the value; it does not guarantee the game "
+    "applies it.\n"
+    "- Games with anti-cheat are read-only unless individually reviewed. Reviews are not endorsed by "
+    "the publisher or anti-cheat vendor.\n"
+    "- You are responsible for each game's EULA / terms of service. No warranty is provided.\n\n"
+    "Do you accept these terms and want to enable writes?"
+)
+
+
+def _game_consent_text(game_name: str, platform: str, version: str, verification: Dict[str, Any]) -> str:
+    status = verification.get("status", "candidate")
+    meaning = {
+        "write_verified": "fully verified for this version",
+        "write_candidate": "write-safe: Game Tuner can write and restore these values, but it is not yet "
+                           "confirmed that the game applies all of them",
+    }.get(status, status)
+    return (
+        f"Allow Game Tuner to change settings for:\n\n{game_name} ({platform}), version {version}\n\n"
+        f"Support level: {meaning}.\n\n"
+        "A backup is created first and failed writes are rolled back. You will be asked again if the "
+        "game version changes. Continue?"
+    )
 
 
 def _verification_allows_setting(verification: Dict[str, Any], key: str) -> bool:
@@ -586,6 +617,12 @@ class App:
         self._build_ui()
         if self._verification_registry.test_write_enabled():
             self._test_write_btn.configure(text="Disable Test Writes")
+        elif self._verification_registry.disclaimer_outdated():
+            self.root.after(500, lambda: messagebox.showinfo(
+                "Disclaimer Updated",
+                "The disclaimer has changed since you enabled writes, so writes are disabled. "
+                "Click \"Enable Test Writes\" to review and accept it again.",
+            ))
         self._scan_games()
 
     # ------------------------------------------------------------------
@@ -894,11 +931,14 @@ class App:
                         config_dicts.append(_try_read_file(path))
 
                 settings = extract_key_settings(game_name, config_dicts)
-                verification = self._verification_registry.status_for(
-                    game_name,
-                    getattr(game, "platform", "Unknown"),
-                    detect_game_version(install_path),
-                    game_structural_fingerprint(game_name, config_dicts),
+                verification = apply_anticheat_policy(
+                    self._verification_registry.status_for(
+                        game_name,
+                        getattr(game, "platform", "Unknown"),
+                        detect_game_version(install_path),
+                        game_structural_fingerprint(game_name, config_dicts),
+                    ),
+                    install_path,
                 )
             except Exception:
                 # Graceful degradation: network errors, timeouts, parsing
@@ -1034,10 +1074,23 @@ class App:
             row.var.set(False)
 
     def _safe_apply(self, row: GameRow, changes: Dict[str, str]) -> List[Dict[str, Any]]:
+        game_version = detect_game_version(row.install_path)
+        if (
+            self._verification_registry.test_write_enabled()
+            and not self._verification_registry.game_consent_granted(row.game_name, row.platform, game_version)
+        ):
+            if not messagebox.askyesno(
+                "Confirm Writes For This Game",
+                _game_consent_text(row.game_name, row.platform, game_version, row.verification),
+            ):
+                raise VerificationError("game_consent_required")
+            self._verification_registry.grant_game_consent(
+                row.game_name, row.platform, game_version, status=str(row.verification.get("status", "")),
+            )
         return backup_and_write(
             row.game_name,
             row.platform,
-            detect_game_version(row.install_path),
+            game_version,
             row._config_dicts,
             changes,
             write_settings,
@@ -1056,12 +1109,7 @@ class App:
             self._test_write_btn.configure(text="Enable Test Writes")
             messagebox.showinfo("Test Writes", "Experimental write mode is disabled.")
             return
-        if not messagebox.askyesno(
-            "Enable Test Writes",
-            "This is an experimental feature that changes game configuration files. "
-            "Only verified games can be changed. A backup is created before every write, "
-            "and failed validation restores it. Enable test writes?",
-        ):
+        if not messagebox.askyesno("Enable Writes - Disclaimer", DISCLAIMER_SUMMARY):
             return
         self._verification_registry.enable_test_writes()
         self._test_write_btn.configure(text="Disable Test Writes")
@@ -1100,11 +1148,14 @@ class App:
         def _refresh() -> None:
             for row in rows:
                 try:
-                    verification = self._verification_registry.status_for(
-                        row.game_name,
-                        row.platform,
-                        detect_game_version(row.install_path),
-                        game_structural_fingerprint(row.game_name, row._config_dicts),
+                    verification = apply_anticheat_policy(
+                        self._verification_registry.status_for(
+                            row.game_name,
+                            row.platform,
+                            detect_game_version(row.install_path),
+                            game_structural_fingerprint(row.game_name, row._config_dicts),
+                        ),
+                        row.install_path,
                     )
                 except Exception:
                     verification = {"status": "candidate", "reason": "detection_failed"}
