@@ -327,7 +327,7 @@ curl -X POST http://127.0.0.1:8787/parse ^
 
 - 會修改檔案的端點（`/apply`、`/import`、`/export`）必須帶 `X-GameTuner-Token` header。token 在伺服器啟動時印出，或用 `--token` / 環境變數 `GAMETUNER_API_TOKEN` 指定。 / Endpoints that change files require the `X-GameTuner-Token` header; the token is printed at start-up or set with `--token` / `GAMETUNER_API_TOKEN`.
 - 只能綁定 loopback 位址，不送 CORS header，並檢查 `Host` header，瀏覽器裡的網頁無法呼叫。 / Loopback only, no CORS headers, and the `Host` header is checked, so web pages cannot drive the API.
-- `/apply` 走跟 GUI/CLI 相同的受控寫入：使用者同意、驗證規則、遊戲執行中檢查、備份與還原；呼叫端提供的 `config_files` 在寫入時一律忽略。 / `/apply` uses the same guarded write as the GUI and CLI; caller-supplied `config_files` are ignored for writes.
+- `/apply` 走跟 GUI/CLI 相同的受控寫入：使用者同意、驗證規則、遊戲執行中檢查、反作弊檢查、備份與還原；呼叫端提供的 `config_files` 在寫入時一律忽略。API 無法代替使用者同意：須先在 GUI 或 CLI 接受 disclaimer 並確認該遊戲／版本。 / `/apply` uses the same guarded write as the GUI and CLI; caller-supplied `config_files` are ignored. The API cannot give consent: accept the disclaimer and confirm the game/version in the GUI or CLI first.
 
 ```bash
 curl -X POST http://127.0.0.1:8787/apply ^
