@@ -32,6 +32,7 @@ from .. import profile_functions  # noqa: F401  (import for side effect)
 _VALID_VERSION_POLICIES = {"exact", "schema_compatible"}
 _VALID_ANTICHEAT_REVIEW = {"approved", "blocked", "n/a"}
 _VALID_LEVELS = {"L0", "L1", "L2", "L3", "L4"}
+_VALID_PARSE_MODES = {"single_file", "multi_file"}
 
 
 class ProfileError(ValueError):
@@ -86,6 +87,7 @@ class Profile:
     anticheat: Dict[str, Any] = field(default_factory=dict)
     process_ignore: List[str] = field(default_factory=list)
     write_detail: Optional[str] = None
+    parse_mode: str = "single_file"
     source_path: Optional[Path] = None
 
     def matches(self, game_name: str) -> bool:
@@ -103,6 +105,21 @@ class Profile:
         """Read all settings this profile covers from *content* (main file)."""
         if self.parser_fn:
             return function_registry.get("parser_fn", self.parser_fn)(content)
+        raise ProfileError(
+            self.source_path or Path(self.id), "per-field declarative read not implemented yet; profile needs parser_fn"
+        )
+
+    def parse_multi(self, config_files: List[Dict[str, Any]]) -> Dict[str, Optional[str]]:
+        """Read settings from the *full* list of config file entries.
+
+        For ``parse_mode: "multi_file"`` profiles only (e.g. CS2, whose
+        settings are split across ``cs2_video.txt`` and a separate convars
+        file) — the registered ``parser_fn`` receives the raw config-file
+        list exactly as the pre-P1 legacy function did, so this is still a
+        zero-behavior-change wrapper, just over multiple files instead of one.
+        """
+        if self.parser_fn:
+            return function_registry.get("parser_fn", self.parser_fn)(config_files)
         raise ProfileError(
             self.source_path or Path(self.id), "per-field declarative read not implemented yet; profile needs parser_fn"
         )
@@ -247,6 +264,12 @@ def load_profile(path: Path) -> Profile:
     if version_policy not in _VALID_VERSION_POLICIES:
         raise ProfileError(path, f"version_policy={version_policy!r} is not one of {sorted(_VALID_VERSION_POLICIES)}")
 
+    parse_mode = raw.get("parse_mode", "single_file")
+    if parse_mode not in _VALID_PARSE_MODES:
+        raise ProfileError(path, f"parse_mode={parse_mode!r} is not one of {sorted(_VALID_PARSE_MODES)}")
+    if parse_mode == "multi_file" and not parser_fn:
+        raise ProfileError(path, "parse_mode='multi_file' requires parser_fn")
+
     required_keys = raw.get("required_keys", {})
     if not isinstance(required_keys, dict):
         raise ProfileError(path, "required_keys must be an object mapping file key -> list of keys")
@@ -272,6 +295,7 @@ def load_profile(path: Path) -> Profile:
         anticheat=_parse_anticheat(raw.get("anticheat", {}), path),
         process_ignore=raw.get("process_ignore", []),
         write_detail=raw.get("write_detail"),
+        parse_mode=parse_mode,
         source_path=path,
     )
 

@@ -63,6 +63,24 @@ def _f1_25_write(content: str, settings: Dict[str, Optional[str]]) -> str:
     return _write_f1_xml(content, settings)
 
 
+def _cs2_parse(config_files: Any) -> Dict[str, Optional[str]]:
+    """Note: receives the *full* config-file list (``parse_mode:
+    "multi_file"``), not a single file's content — CS2's settings are split
+    across ``cs2_video.txt`` (resolution/vsync/upscaling) and a separate
+    convars file (``fps_max`` for frame_limit), see
+    ``settings_parser._parse_cs2`` and the CS2 profile's ``_parser_fn_note``.
+    """
+    from .settings_parser import _parse_cs2
+
+    return _parse_cs2(config_files)
+
+
+def _cs2_write(content: str, settings: Dict[str, Optional[str]]) -> str:
+    from .settings_writer import _write_cs2_video
+
+    return _write_cs2_video(content, settings)
+
+
 def register_all() -> None:
     _registry.register("parser_fn", "black_myth_parse", _black_myth_parse)
     _registry.register("writer_fn", "black_myth_write", _black_myth_write)
@@ -70,6 +88,8 @@ def register_all() -> None:
     _registry.register("writer_fn", "black_myth_benchmark_write", _black_myth_benchmark_write)
     _registry.register("parser_fn", "f1_25_parse", _f1_25_parse)
     _registry.register("writer_fn", "f1_25_write", _f1_25_write)
+    _registry.register("parser_fn", "cs2_parse", _cs2_parse)
+    _registry.register("writer_fn", "cs2_write", _cs2_write)
 
 
 register_all()

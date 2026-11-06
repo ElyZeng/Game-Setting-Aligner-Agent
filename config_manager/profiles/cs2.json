@@ -1,0 +1,44 @@
+{
+  "id": "cs2",
+  "match": { "names": ["Counter-Strike 2"] },
+  "engine": "source2",
+  "files": {
+    "main": { "path": "cs2_video.txt", "codec": "valve_kv" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" }
+  },
+  "parser_fn": "cs2_parse",
+  "writer_fn": "cs2_write",
+  "write_detail": "CS2 video settings written",
+  "parse_mode": "multi_file",
+  "_parser_fn_note": "CS2 is the first profile that needs more than one config file to read: resolution/screen_mode/vsync/upscaling live in cs2_video.txt, but frame_limit (fps_max) only lives in a separate machine/user convars file. The legacy _parse_cs2(all_configs) already takes the whole config-file list for this reason, so this profile sets parse_mode='multi_file' (new P1 plumbing - see Profile.parse_multi in profiles/loader.py) instead of the single-file 'main' content path the other profiles use. Writing only ever touches cs2_video.txt, so writer_fn still uses the normal single-file path - no change needed there. parser_fn/writer_fn wrap settings_parser._parse_cs2 / settings_writer._write_cs2_video verbatim (config_manager/profile_functions.py), so this migration is zero-behavior-change, INCLUDING a pre-existing quirk: the parser reads vsync from 'setting.mat_vsync' but the writer patches 'setting.mat_vsync_mode' (a real key-name mismatch in the legacy code, left as-is rather than silently fixed during migration).",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "setting.defaultres",
+      "setting.defaultresheight",
+      "setting.fullscreen",
+      "setting.nowindowborder",
+      "setting.mat_vsync",
+      "setting.videocfg_fsr_detail"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No local runner/rules verified-games rule file or .9 run evidence exists in this checkout for Counter-Strike 2 (same caveat as the other migrated profiles) - left empty rather than fabricated.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "Counter-Strike 2 ships Valve Anti-Cheat (VAC), but VAC is NOT in config_manager/anticheat.py's vendor/detection tables (only EasyAntiCheat, BattlEye, EA Javelin, nProtect GameGuard, XIGNCODE3, Anti-Cheat Expert, PunkBuster, mhyprot are known there) - detect_anticheat() will currently return nothing for this title even though real anti-cheat is present. Add a VAC entry to anticheat.py and re-scan a real install before treating writes as broadly safe.",
+    "scope": []
+  },
+  "process_ignore": []
+}

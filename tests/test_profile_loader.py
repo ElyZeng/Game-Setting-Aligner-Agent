@@ -27,6 +27,12 @@ def test_load_all_real_profiles_succeeds():
     assert f1_profile.matches("F1® 25")
     assert not f1_profile.matches("F1 25")
 
+    assert "cs2" in profiles
+    cs2_profile = profiles["cs2"]
+    assert cs2_profile.matches("Counter-Strike 2")
+    assert not cs2_profile.matches("CS2")
+    assert cs2_profile.parse_mode == "multi_file"
+
 
 def _write_profile(tmp_path, data):
     path = tmp_path / "broken.json"
@@ -97,6 +103,25 @@ def test_invalid_json_raises(tmp_path):
     path = tmp_path / "broken.json"
     path.write_text("{not json", encoding="utf-8")
     with pytest.raises(ProfileError, match="invalid JSON"):
+        load_profile(path)
+
+
+def test_invalid_parse_mode_raises(tmp_path):
+    data = dict(MINIMAL_VALID)
+    data["parse_mode"] = "not_a_real_mode"
+    path = _write_profile(tmp_path, data)
+    with pytest.raises(ProfileError, match="not_a_real_mode"):
+        load_profile(path)
+
+
+def test_multi_file_parse_mode_without_parser_fn_raises(tmp_path):
+    data = dict(MINIMAL_VALID)
+    del data["parser_fn"]
+    del data["writer_fn"]
+    data["settings"] = {"resolution": {"file": "main"}}
+    data["parse_mode"] = "multi_file"
+    path = _write_profile(tmp_path, data)
+    with pytest.raises(ProfileError, match="multi_file"):
         load_profile(path)
 
 

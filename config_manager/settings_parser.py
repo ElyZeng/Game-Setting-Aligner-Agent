@@ -1437,6 +1437,11 @@ def extract_key_settings(
 
     profile = profile_dispatch.find_profile(game_name)
     if profile is not None and profile.parser_fn:
+        if profile.parse_mode == "multi_file":
+            # e.g. CS2: settings are split across cs2_video.txt and a
+            # separate convars file, so the parser needs every readable
+            # config, not just a single "main" file's content.
+            return profile.parse_multi(readable)
         main_file = profile.files.get("main")
         if main_file is not None:
             main_name = _os.path.basename(main_file.path)
