@@ -1,0 +1,53 @@
+{
+  "id": "f1-25",
+  "match": { "names": ["F1® 25"] },
+  "engine": "ego",
+  "files": {
+    "main": { "path": "hardware_settings_config.xml", "codec": "xml_attr" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "dynamic_resolution": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "f1_25_parse",
+  "writer_fn": "f1_25_write",
+  "write_detail": "F1 25 XML settings written",
+  "_parser_fn_note": "F1 25's quick_preset is a component-signature match across 12+ independent XML attributes (lighting/ssrt/shadows/weather/texture streaming/particles/ground cover/ray tracing), and frame_generation forces screen_mode changes (see gui.app.adjust_f1_frame_generation_changes, which stays outside this profile — it's a cross-field GUI-level adjustment, not file I/O). Too interdependent to decompose in this pass; parser_fn/writer_fn wrap settings_parser._parse_f1_xml / settings_writer._write_f1_xml verbatim (see config_manager/profile_functions.py), so this migration is zero-behavior-change.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "resolution",
+      "antialiasing",
+      "aa_quality",
+      "frame_gen",
+      "multi_frame_gen",
+      "lighting",
+      "ssrt",
+      "shadows",
+      "weather_effects",
+      "texture_streaming",
+      "particles",
+      "vehicle_reflections",
+      "ground_cover"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No local runner/rules verified-games rule file or .9 run evidence exists in this checkout for F1® 25 (same caveat as black-myth-wukong-benchmark.json) - left empty rather than fabricated. Fill in from a real verification run before relying on this for write-gating.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "Not yet scanned against a real F1® 25 install in this checkout (no validation-evidence/ entry exists for this title, unlike Black Myth). F1® 25 is an EA-published online-capable racing title and may ship EA anti-cheat (EA Javelin/Anti-Cheat Expert are already known to config_manager/anticheat.py's detection map) - run detect_anticheat() against a real install and update this field before treating writes as broadly safe.",
+    "scope": []
+  },
+  "process_ignore": []
+}
