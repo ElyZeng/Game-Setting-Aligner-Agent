@@ -113,6 +113,18 @@ def _forza_fullscreen_sidecar(config_files: Any, settings: Dict[str, Optional[st
     return results
 
 
+def _cyberpunk_parse(content: str) -> Dict[str, Optional[str]]:
+    from .settings_parser import _parse_cyberpunk
+
+    return _parse_cyberpunk(content)
+
+
+def _cyberpunk_write(content: str, settings: Dict[str, Optional[str]]) -> str:
+    from .settings_writer import _write_cyberpunk
+
+    return _write_cyberpunk(content, settings)
+
+
 def register_all() -> None:
     _registry.register("parser_fn", "black_myth_parse", _black_myth_parse)
     _registry.register("writer_fn", "black_myth_write", _black_myth_write)
@@ -125,6 +137,8 @@ def register_all() -> None:
     _registry.register("parser_fn", "forza_parse", _forza_parse)
     _registry.register("writer_fn", "forza_write", _forza_write)
     _registry.register("write_side_effect_fn", "forza_fullscreen_sidecar", _forza_fullscreen_sidecar)
+    _registry.register("parser_fn", "cyberpunk_parse", _cyberpunk_parse)
+    _registry.register("writer_fn", "cyberpunk_write", _cyberpunk_write)
 
 
 register_all()

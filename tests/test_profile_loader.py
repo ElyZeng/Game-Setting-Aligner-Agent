@@ -40,6 +40,13 @@ def test_load_all_real_profiles_succeeds():
     assert not forza_profile.matches("Forza")
     assert forza_profile.write_side_effect_fn == "forza_fullscreen_sidecar"
 
+    assert "cyberpunk-2077" in profiles
+    cyberpunk_profile = profiles["cyberpunk-2077"]
+    assert cyberpunk_profile.matches("Cyberpunk 2077")
+    assert not cyberpunk_profile.matches("Cyberpunk 2077: Phantom Liberty")
+    assert cyberpunk_profile.parse_mode == "single_file"
+    assert cyberpunk_profile.write_side_effect_fn is None
+
 
 def _write_profile(tmp_path, data):
     path = tmp_path / "broken.json"
