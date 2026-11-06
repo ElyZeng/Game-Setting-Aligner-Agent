@@ -1,0 +1,74 @@
+{
+  "id": "black-myth-wukong",
+  "match": { "names": ["Black Myth: Wukong"] },
+  "engine": "unreal",
+  "files": {
+    "main": { "path": "GameUserSettings.ini", "codec": "unreal_ini" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "dynamic_resolution": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "black_myth_parse",
+  "writer_fn": "black_myth_write",
+  "write_detail": "Black Myth settings written",
+  "_parser_fn_note": "Black Myth's fields are too interdependent (resolution derived from a render-percentage x base-resolution product, quick_preset cross-checked against 10 scalability keys, frame_generation gated on the current upscaler) to decompose into per-field key/map entries in this first pass. parser_fn/writer_fn wrap the pre-existing settings_parser._parse_black_myth / settings_writer._write_black_myth_ini verbatim (see config_manager/profile_functions.py) so this migration changes zero behaviour; only match/verified/anticheat/fingerprint metadata is new. 'settings' above exists so this profile is still queryable for which keys it covers (GUI dropdowns, runner case generation) even though individual field codecs aren't wired up yet.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "ResolutionSizeX",
+      "ResolutionSizeY",
+      "FullscreenMode",
+      "LastUserConfirmedDesiredScreenWidth",
+      "LastUserConfirmedDesiredScreenHeight",
+      "sg.ResolutionQuality",
+      "sg.ViewDistanceQuality",
+      "sg.AntiAliasingQuality",
+      "sg.ShadowQuality",
+      "sg.GlobalIlluminationQuality",
+      "sg.ReflectionQuality",
+      "sg.PostProcessQuality",
+      "sg.TextureQuality",
+      "sg.EffectsQuality",
+      "sg.FoliageQuality",
+      "sg.ShadingQuality",
+      "UISettingData"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [
+    {
+      "platform": "Steam",
+      "version": "21393610",
+      "levels": {
+        "resolution": "L3",
+        "screen_mode": "L3",
+        "vsync": "L3",
+        "frame_limit": "L2",
+        "dynamic_resolution": "L2",
+        "upscaling": "L3",
+        "upscaling_mode": "L3",
+        "frame_generation": "L3",
+        "quick_preset": "L3"
+      }
+    }
+  ],
+  "_verified_note": "Levels transcribed from the 2026-11-05 .9 runner run (disposable 21/0, persist 5/5, runs/20261105-153752-bmw-full-persist) referenced in GSAA_P1_handoff.md §1. Persist (Round B) was only exercised for the 5 representative cases the runbook covered, not exhaustively per setting — maintainer should confirm/adjust these levels against runner/rules/verified-games-1.2.25.json before treating this as the authoritative source (handoff §4.3 migrates that mapping in a later P1 step).",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "No EasyAntiCheat/BattlEye/kernel anti-cheat component found in the Black Myth: Wukong installation as of 2026-11-05; single-player game.",
+    "scope": ["resolution", "screen_mode", "vsync", "frame_limit", "dynamic_resolution", "upscaling", "upscaling_mode", "frame_generation", "quick_preset"]
+  },
+  "process_ignore": ["EpicWebHelper.exe"],
+  "_process_ignore_note": "Black Myth's Epic build launches an auxiliary EpicWebHelper.exe that the P0 running-game guard (process_guard.py) currently counts toward 'game is running' — see handoff §1 TODO. process_guard.py does not yet read this field; wiring it in is a follow-up P1 task, not part of this first profile."
+}
