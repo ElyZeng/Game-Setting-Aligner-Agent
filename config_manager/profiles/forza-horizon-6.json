@@ -1,0 +1,54 @@
+{
+  "id": "forza-horizon-6",
+  "match": { "names": ["Forza Horizon 6"] },
+  "engine": "forzatech",
+  "files": {
+    "main": { "path": "UserConfigSelections", "codec": "xml_attr" },
+    "fullscreen_sidecar": { "path": "fullscreen_choice", "codec": "raw_text" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "dynamic_resolution": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "forza_parse",
+  "writer_fn": "forza_write",
+  "write_detail": "Forza XML settings written",
+  "write_side_effect_fn": "forza_fullscreen_sidecar",
+  "parse_mode": "single_file",
+  "_parser_fn_note": "parser_fn/writer_fn wrap settings_parser._parse_forza_xml / settings_writer._write_forza_xml verbatim (config_manager/profile_functions.py) - zero-behavior-change. quick_preset is a multi-field component-signature match/write across 16+ XML option ids (plus, for UserConfig Version=52 saves, 7 more tag/attr fields keyed by preset index) - far too interdependent to decompose this pass. frame_limit is refresh-rate-relative on Version=52 saves (see forza_refresh_rate/forza_v52_frame_rate_labels) and is read/written together with vsync (Unlimited forces VSync Off; re-enabling VSync while FrameRate='Unlocked' rewrites it back to the refresh-rate-capped value) - this cross-field coupling lives entirely inside the wrapped legacy function, unchanged. Only \"Forza Horizon 6\" is migrated here, not \"Forza Horizon 5\": FH5 has no real config-file evidence in this checkout (validation/workstation.json has found:false for both its candidate paths) and several call sites outside settings_parser/writer (config_manager/verification.py's write-candidate-rule/preflight/backup-and-write gates) check game==\"Forza Horizon 6\" as an exact literal string, so giving FH5 the same profile/behavior would be an unverified assumption, not a migration. FH5 keeps resolving through the legacy \"forza\" in name_lower substring dispatch exactly as before (Profile.matches() is exact-match, so this profile cannot accidentally hijack it).",
+  "_write_side_effect_fn_note": "The pre-P1 legacy write_settings() 'forza_xml' branch has a side effect beyond the main UserConfigSelections write: when screen_mode is being written, it also writes a single raw byte (1=Fullscreen, 0=otherwise) to a sibling 'fullscreen_choice' file (see settings_writer.forza_auxiliary_paths, which derives that path from the main file's '.../ForzaUserConfigSelections/UserConfigSelections' directory shape). That side effect lives in the write-dispatch branch itself, not inside _write_forza_xml, so a plain parser_fn/writer_fn wrapper would silently drop it. Added new, additive, backward-compatible profile-loader plumbing for this: an optional 'write_side_effect_fn' field (function_registry kind 'write_side_effect_fn'; Profile.write_side_effects()) that settings_writer.py's profile-first dispatch calls right after a successful main-file write, extending the results list with whatever extra {path,status,detail} entries it returns. forza_fullscreen_sidecar (profile_functions.py) wraps the exact same forza_auxiliary_paths()/atomic_write_bytes() call and 'Forza fullscreen choice written' detail string the legacy branch used, so behavior (including error handling - it runs inside the same try/except as the main write) is unchanged. Existing profiles are unaffected (field defaults to None, no side effects).",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "ResolutionWidth",
+      "ResolutionHeight",
+      "Fullscreen",
+      "PresentInterval",
+      "VSync",
+      "FrameRate",
+      "XeSSMode",
+      "DLSSMode",
+      "FSR3Mode"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No local runner/rules verified-games rule file or .9 run evidence exists in this checkout for Forza Horizon 6 (same caveat as the other migrated profiles) - left empty rather than fabricated. Note release-assets/forza-write-candidate-rules.json and release-review/forza-preset-v1.2.21-rule.json already gate the quick_preset write in production via config_manager/verification.py's own exact-game-name checks, independent of this profile's verified[] field - that mechanism is untouched by this migration.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "Forza Horizon 6 is an offline-capable, primarily single-player/co-op racing game; no anti-cheat vendor for any Forza Horizon title is present in config_manager/anticheat.py's detection tables, and no validation-evidence/ scan exists for it in this checkout. Treated the same as Black Myth's single-player basis, not independently re-verified against a real install.",
+    "scope": []
+  },
+  "process_ignore": [],
+  "_process_ignore_note": "No Forza-specific process_ignore entries identified in the legacy code or existing tests; left empty rather than guessed."
+}

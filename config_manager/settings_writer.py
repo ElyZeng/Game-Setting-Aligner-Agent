@@ -1486,6 +1486,7 @@ def write_settings(
                         _safe_write(path, new_content)
                         detail = profile.write_detail or f"{profile.id} settings written"
                         results.append({"path": path, "status": "ok", "detail": detail})
+                        results.extend(profile.write_side_effects(config_files, to_write))
                     except Exception as e:
                         results.append({"path": path, "status": "error", "detail": str(e)})
                     return results

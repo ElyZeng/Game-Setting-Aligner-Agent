@@ -33,6 +33,13 @@ def test_load_all_real_profiles_succeeds():
     assert not cs2_profile.matches("CS2")
     assert cs2_profile.parse_mode == "multi_file"
 
+    assert "forza-horizon-6" in profiles
+    forza_profile = profiles["forza-horizon-6"]
+    assert forza_profile.matches("Forza Horizon 6")
+    assert not forza_profile.matches("Forza Horizon 5")
+    assert not forza_profile.matches("Forza")
+    assert forza_profile.write_side_effect_fn == "forza_fullscreen_sidecar"
+
 
 def _write_profile(tmp_path, data):
     path = tmp_path / "broken.json"
@@ -122,6 +129,24 @@ def test_multi_file_parse_mode_without_parser_fn_raises(tmp_path):
     data["parse_mode"] = "multi_file"
     path = _write_profile(tmp_path, data)
     with pytest.raises(ProfileError, match="multi_file"):
+        load_profile(path)
+
+
+def test_write_side_effect_fn_without_writer_fn_raises(tmp_path):
+    data = dict(MINIMAL_VALID)
+    del data["writer_fn"]
+    data["settings"] = {"resolution": {"file": "main"}}
+    data["write_side_effect_fn"] = "forza_fullscreen_sidecar"
+    path = _write_profile(tmp_path, data)
+    with pytest.raises(ProfileError, match="write_side_effect_fn"):
+        load_profile(path)
+
+
+def test_unregistered_write_side_effect_fn_raises(tmp_path):
+    data = dict(MINIMAL_VALID)
+    data["write_side_effect_fn"] = "no_such_side_effect_fn"
+    path = _write_profile(tmp_path, data)
+    with pytest.raises(ProfileError, match="no_such_side_effect_fn"):
         load_profile(path)
 
 

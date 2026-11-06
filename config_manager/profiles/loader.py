@@ -88,6 +88,7 @@ class Profile:
     process_ignore: List[str] = field(default_factory=list)
     write_detail: Optional[str] = None
     parse_mode: str = "single_file"
+    write_side_effect_fn: Optional[str] = None
     source_path: Optional[Path] = None
 
     def matches(self, game_name: str) -> bool:
@@ -131,6 +132,26 @@ class Profile:
         raise ProfileError(
             self.source_path or Path(self.id), "per-field declarative write not implemented yet; profile needs writer_fn"
         )
+
+    def write_side_effects(
+        self, config_files: List[Dict[str, Any]], settings: Dict[str, Optional[str]]
+    ) -> List[Dict[str, str]]:
+        """Run any extra writes this profile needs beyond the main file.
+
+        Optional (most profiles have none — returns ``[]``). For games like
+        Forza Horizon 6, a successful main-file write has an extra side
+        effect (a sibling ``fullscreen_choice`` sidecar byte-file write) that
+        the pre-P1 legacy code performed inline in the write-dispatch branch
+        rather than inside the main writer function itself. ``write_side_effect_fn``
+        wraps that *existing* logic verbatim so the migration stays
+        zero-behavior-change; it receives the full config-file list (it may
+        need files other than "main") and the settings being written, and
+        returns extra ``{"path", "status", "detail"}`` result dicts to append
+        after the main-file write result.
+        """
+        if not self.write_side_effect_fn:
+            return []
+        return function_registry.get("write_side_effect_fn", self.write_side_effect_fn)(config_files, settings)
 
 
 def _require(data: Dict[str, Any], key: str, path: Path, expected_type: type) -> Any:
@@ -255,6 +276,14 @@ def load_profile(path: Path) -> Profile:
             function_registry.get("writer_fn", writer_fn)
         except function_registry.FunctionRegistryError as exc:
             raise ProfileError(path, str(exc)) from exc
+    write_side_effect_fn = raw.get("write_side_effect_fn")
+    if write_side_effect_fn is not None:
+        if not writer_fn:
+            raise ProfileError(path, "write_side_effect_fn requires writer_fn")
+        try:
+            function_registry.get("write_side_effect_fn", write_side_effect_fn)
+        except function_registry.FunctionRegistryError as exc:
+            raise ProfileError(path, str(exc)) from exc
     if not settings and not (parser_fn and writer_fn):
         raise ProfileError(
             path, "profile must declare either per-field 'settings' or both 'parser_fn' and 'writer_fn'"
@@ -296,6 +325,7 @@ def load_profile(path: Path) -> Profile:
         process_ignore=raw.get("process_ignore", []),
         write_detail=raw.get("write_detail"),
         parse_mode=parse_mode,
+        write_side_effect_fn=write_side_effect_fn,
         source_path=path,
     )
 

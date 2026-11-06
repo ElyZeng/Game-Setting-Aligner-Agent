@@ -22,6 +22,7 @@ _registries: Dict[str, Dict[str, Callable]] = {
     "parser_fn": {},
     "writer_fn": {},
     "preset_fn": {},
+    "write_side_effect_fn": {},
 }
 
 

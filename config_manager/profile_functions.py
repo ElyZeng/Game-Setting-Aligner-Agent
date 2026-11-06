@@ -81,6 +81,38 @@ def _cs2_write(content: str, settings: Dict[str, Optional[str]]) -> str:
     return _write_cs2_video(content, settings)
 
 
+def _forza_parse(content: str) -> Dict[str, Optional[str]]:
+    from .settings_parser import _parse_forza_xml
+
+    return _parse_forza_xml(content)
+
+
+def _forza_write(content: str, settings: Dict[str, Optional[str]]) -> str:
+    from .settings_writer import _write_forza_xml
+
+    return _write_forza_xml(content, settings)
+
+
+def _forza_fullscreen_sidecar(config_files: Any, settings: Dict[str, Optional[str]]) -> list:
+    """Mirrors the legacy write_settings() 'forza_xml' branch's sidecar
+    write: when screen_mode is part of what's being written, also persist a
+    single raw byte (1=Fullscreen, else 0) to the sibling 'fullscreen_choice'
+    file located via settings_writer.forza_auxiliary_paths. See
+    forza-horizon-6.json's _write_side_effect_fn_note for the full rationale.
+    """
+    from .safe_io import atomic_write_bytes
+    from .settings_parser import SCREEN_MODE
+    from .settings_writer import forza_auxiliary_paths
+
+    results = []
+    if SCREEN_MODE in settings:
+        fullscreen_value = bytes([1 if settings[SCREEN_MODE] == "Fullscreen" else 0])
+        for auxiliary_path in forza_auxiliary_paths(config_files):
+            atomic_write_bytes(auxiliary_path, fullscreen_value)
+            results.append({"path": auxiliary_path, "status": "ok", "detail": "Forza fullscreen choice written"})
+    return results
+
+
 def register_all() -> None:
     _registry.register("parser_fn", "black_myth_parse", _black_myth_parse)
     _registry.register("writer_fn", "black_myth_write", _black_myth_write)
@@ -90,6 +122,9 @@ def register_all() -> None:
     _registry.register("writer_fn", "f1_25_write", _f1_25_write)
     _registry.register("parser_fn", "cs2_parse", _cs2_parse)
     _registry.register("writer_fn", "cs2_write", _cs2_write)
+    _registry.register("parser_fn", "forza_parse", _forza_parse)
+    _registry.register("writer_fn", "forza_write", _forza_write)
+    _registry.register("write_side_effect_fn", "forza_fullscreen_sidecar", _forza_fullscreen_sidecar)
 
 
 register_all()
