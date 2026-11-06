@@ -1,0 +1,61 @@
+{
+  "id": "black-myth-wukong-benchmark",
+  "match": { "names": ["Black Myth: Wukong Benchmark Tool"] },
+  "engine": "unreal",
+  "files": {
+    "main": { "path": "GameUserSettings.ini", "codec": "unreal_ini" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "dynamic_resolution": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "black_myth_benchmark_parse",
+  "writer_fn": "black_myth_benchmark_write",
+  "write_detail": "Black Myth settings written",
+  "_parser_fn_note": "Same reasoning as black-myth-wukong.json: the Benchmark Tool variant shares _parse_black_myth/_write_black_myth_ini with the retail game but passes benchmark=True, which changes several mappings (upscaling has no FSR3/NXSR, quick_preset has an extra Custom code, frame_generation 'On' instead of 'Auto', borderless-window resolution derivation). Kept as its own profile (not folded into black-myth-wukong.json) because Profile.matches() is an exact title match and the two games are genuinely different Steam apps with different installs/saves — see tests/test_profile_black_myth.py::test_benchmark_variant_not_hijacked_by_profile, which guarded this exact-match behavior before this profile existed.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "ResolutionSizeX",
+      "ResolutionSizeY",
+      "LastUserConfirmedResolutionSizeX",
+      "LastUserConfirmedResolutionSizeY",
+      "FullscreenMode",
+      "LastConfirmedFullscreenMode",
+      "PreferredFullscreenMode",
+      "sg.ResolutionQuality",
+      "sg.ViewDistanceQuality",
+      "sg.AntiAliasingQuality",
+      "sg.ShadowQuality",
+      "sg.GlobalIlluminationQuality",
+      "sg.RayTracingQuality",
+      "sg.ReflectionQuality",
+      "sg.PostProcessQuality",
+      "sg.TextureQuality",
+      "sg.EffectsQuality",
+      "sg.FoliageQuality",
+      "sg.ShadingQuality",
+      "UISettingData"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No local runner/rules verified-games rule file was found in this clone to transcribe levels from (handoff §4.3 references runner/rules/verified-games-1.2.25.json, which does not exist in this checkout), and no .9 runner evidence for this specific Steam build was available at migration time (2026-11-06) — left empty rather than fabricated. Fill in from the GitHub release asset or a fresh .9 run before relying on this for write-gating.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "Standalone single-player benchmark utility (no online/multiplayer component); same engine/install family as Black Myth: Wukong, which also has no detected anti-cheat as of 2026-11-05.",
+    "scope": ["resolution", "screen_mode", "vsync", "frame_limit", "dynamic_resolution", "upscaling", "upscaling_mode", "frame_generation", "quick_preset"]
+  },
+  "process_ignore": ["EpicWebHelper.exe"],
+  "_process_ignore_note": "Same Epic build auxiliary process as the retail game (see black-myth-wukong.json); process_guard.py does not yet read this field."
+}

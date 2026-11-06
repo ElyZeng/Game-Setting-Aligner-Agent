@@ -17,6 +17,11 @@ def test_load_all_real_profiles_succeeds():
     assert not profile.matches("Black Myth: Wukong Benchmark Tool")
     assert not profile.matches("Some Other Game")
 
+    assert "black-myth-wukong-benchmark" in profiles
+    benchmark_profile = profiles["black-myth-wukong-benchmark"]
+    assert benchmark_profile.matches("Black Myth: Wukong Benchmark Tool")
+    assert not benchmark_profile.matches("Black Myth: Wukong")
+
 
 def _write_profile(tmp_path, data):
     path = tmp_path / "broken.json"

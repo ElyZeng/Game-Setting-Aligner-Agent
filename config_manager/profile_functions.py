@@ -39,9 +39,23 @@ def _black_myth_write(content: str, settings: Dict[str, Optional[str]]) -> str:
     return _write_black_myth_ini(content, settings, benchmark=False)
 
 
+def _black_myth_benchmark_parse(content: str) -> Dict[str, Optional[str]]:
+    from .settings_parser import _parse_black_myth
+
+    return _parse_black_myth(content, benchmark=True)
+
+
+def _black_myth_benchmark_write(content: str, settings: Dict[str, Optional[str]]) -> str:
+    from .settings_writer import _write_black_myth_ini
+
+    return _write_black_myth_ini(content, settings, benchmark=True)
+
+
 def register_all() -> None:
     _registry.register("parser_fn", "black_myth_parse", _black_myth_parse)
     _registry.register("writer_fn", "black_myth_write", _black_myth_write)
+    _registry.register("parser_fn", "black_myth_benchmark_parse", _black_myth_benchmark_parse)
+    _registry.register("writer_fn", "black_myth_benchmark_write", _black_myth_benchmark_write)
 
 
 register_all()
