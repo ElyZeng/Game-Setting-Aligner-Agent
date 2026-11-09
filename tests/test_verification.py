@@ -1456,7 +1456,17 @@ def test_remote_rule_overrides_builtin_rule(tmp_path):
     assert registry.status_for("Counter-Strike 2", "Steam", "unknown", "anything")["status"] == "deprecated"
 
 
-def test_exact_platform_fingerprint_mismatch_is_not_reported_as_version_mismatch(tmp_path):
+def test_exact_platform_fingerprint_mismatch_is_not_reported_as_version_mismatch(tmp_path, monkeypatch):
+    # Isolate from the real Black Myth: Wukong profile (which now also
+    # matches this exact version string) so this test exercises the legacy
+    # rule-file fingerprint-mismatch path specifically, not profile-first
+    # dispatch -- see test_real_black_myth_profile_upgrades_builtin_read_verified_baseline
+    # for the profile-path equivalent.
+    from config_manager import verification as verification_module
+    monkeypatch.setattr(
+        verification_module.profile_dispatch, "find_profile", lambda name: None
+    )
+
     registry = VerificationRegistry("0.08.8", data_dir=tmp_path)
     registry.current_path.write_text(json.dumps({
         "format_version": 1,
@@ -1667,7 +1677,7 @@ def test_real_black_myth_profile_upgrades_builtin_read_verified_baseline(tmp_pat
     (worst level across its 9 settings is L2) instead."""
     registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
 
-    result = registry.status_for("Black Myth: Wukong", "Steam", "21393610", "anything")
+    result = registry.status_for("Black Myth: Wukong", "Steam", "Steam build 21393610", "anything")
 
     assert result["status"] == "write_candidate"
     assert result["reason"] == "verified"
@@ -1689,7 +1699,7 @@ def test_profile_anticheat_dict_flows_through_apply_anticheat_policy_unchanged(t
     from config_manager.verification import apply_anticheat_policy
 
     registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
-    verification = registry.status_for("Black Myth: Wukong", "Steam", "21393610", "anything")
+    verification = registry.status_for("Black Myth: Wukong", "Steam", "Steam build 21393610", "anything")
     assert verification["status"] == "write_candidate"
 
     downgraded = apply_anticheat_policy(verification, "C:/x", detector=lambda _p: ["BattlEye"])
