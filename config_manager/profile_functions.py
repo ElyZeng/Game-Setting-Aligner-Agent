@@ -156,6 +156,32 @@ def _sf6_parse(content: str) -> Dict[str, Optional[str]]:
     return _parse_sf6(content)
 
 
+def _registry_parse(config_files: Any) -> Dict[str, Optional[str]]:
+    """Shared multi_file parser_fn for the registry-based titles (Horizon Zero
+    Dawn (TM) Remastered, Shadow of the Tomb Raider). Receives the *full*
+    config-file list (``parse_mode: "multi_file"``, the CS2 mechanism) and
+    filters it for the one entry with ``type == "registry"`` itself, mirroring
+    _cs2_parse's established pattern - extract_key_settings()'s filename-based
+    _content_for() helper has no registry-path-shaped candidate to match
+    against, so this bypasses it entirely, same as CS2 does for its split
+    files. _parse_registry_json's ``game_hint`` parameter is accepted but
+    never branched on anywhere in its body (confirmed by reading it in full),
+    so this single wrapper is correct for both titles rather than two
+    near-duplicate ones. Read-only: no writer wrapper exists on purpose - see
+    horizon-zero-dawn-remastered.json / shadow-of-the-tomb-raider.json's
+    _parser_fn_note for the full rationale (an unguarded ``cfg["expanded_path"]``
+    bracket access in settings_writer.write_settings()'s profile-first write
+    dispatch would KeyError against config_exporter._read_registry_key()-shaped
+    production entries, which never set expanded_path at all).
+    """
+    from .settings_parser import _empty_result, _parse_registry_json
+
+    for cfg in config_files:
+        if cfg.get("type") == "registry" and cfg.get("content"):
+            return _parse_registry_json(cfg["content"])
+    return _empty_result()
+
+
 def register_all() -> None:
     _registry.register("parser_fn", "black_myth_parse", _black_myth_parse)
     _registry.register("writer_fn", "black_myth_write", _black_myth_write)
@@ -173,6 +199,7 @@ def register_all() -> None:
     _registry.register("parser_fn", "gta_enhanced_parse", _gta_enhanced_parse)
     _registry.register("parser_fn", "expedition_33_parse", _expedition_33_parse)
     _registry.register("parser_fn", "sf6_parse", _sf6_parse)
+    _registry.register("parser_fn", "registry_parse", _registry_parse)
 
 
 register_all()

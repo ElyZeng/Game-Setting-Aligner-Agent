@@ -70,6 +70,23 @@ def test_load_all_real_profiles_succeeds():
     assert sf6_profile.parser_fn == "sf6_parse"
     assert sf6_profile.writer_fn is None
 
+    assert "horizon-zero-dawn-remastered" in profiles
+    hzd_profile = profiles["horizon-zero-dawn-remastered"]
+    assert hzd_profile.matches("Horizon Zero Dawn™ Remastered")
+    assert not hzd_profile.matches("Horizon Zero Dawn™ Complete Edition")
+    assert not hzd_profile.matches("Horizon Zero Dawn")
+    assert hzd_profile.parser_fn == "registry_parse"
+    assert hzd_profile.writer_fn is None
+    assert hzd_profile.parse_mode == "multi_file"
+
+    assert "shadow-of-the-tomb-raider" in profiles
+    sottr_profile = profiles["shadow-of-the-tomb-raider"]
+    assert sottr_profile.matches("Shadow of the Tomb Raider")
+    assert not sottr_profile.matches("Shadow of the Tomb Raider Trial")
+    assert sottr_profile.parser_fn == "registry_parse"
+    assert sottr_profile.writer_fn is None
+    assert sottr_profile.parse_mode == "multi_file"
+
 
 def _write_profile(tmp_path, data):
     path = tmp_path / "broken.json"
