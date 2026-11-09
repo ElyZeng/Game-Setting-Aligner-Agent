@@ -1573,3 +1573,126 @@ def test_write_candidate_allows_guarded_test_write(tmp_path):
 
     assert result == []
     assert called == [True]
+
+
+# --- P1 handoff §4.3: profile-first status_for, rule-file fallback -------
+
+def _synthetic_profile(levels, *, platform="Steam", version="1.0", fingerprint=None,
+                        version_policy="exact", anticheat=None):
+    from config_manager.profiles.loader import Profile, VerifiedEntry
+
+    return Profile(
+        id="synthetic-test-game",
+        match_names=["Synthetic Test Game"],
+        match_steam_appid=None,
+        engine=None,
+        files={},
+        verified=[VerifiedEntry(platform=platform, version=version, levels=levels, fingerprint=fingerprint)],
+        version_policy=version_policy,
+        anticheat=anticheat if anticheat is not None else {"review": "n/a", "detected": [], "scope": []},
+    )
+
+
+def test_profile_status_uses_worst_per_setting_level(tmp_path, monkeypatch):
+    from config_manager import verification as verification_module
+
+    profile = _synthetic_profile({"resolution": "L3", "frame_limit": "L2", "vsync": "L3"})
+    monkeypatch.setattr(
+        verification_module.profile_dispatch, "find_profile",
+        lambda name: profile if name == "Synthetic Test Game" else None,
+    )
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+
+    result = registry.status_for("Synthetic Test Game", "Steam", "1.0", "anything")
+
+    assert result["status"] == "write_candidate"  # worst level (L2) wins, not best (L3)
+    assert result["reason"] == "verified"
+    assert result["rule"]["supported_settings"] == ["frame_limit", "resolution", "vsync"]
+    assert result["rule"]["anticheat"] == {"review": "n/a", "detected": [], "scope": []}
+
+
+def test_profile_version_mismatch_falls_back_to_legacy_rule_not_a_profile_guess(tmp_path, monkeypatch):
+    """A profile with no entry for the requested version must not invent a
+    "version_mismatch" downgrade itself — the legacy rule file (if any) is
+    the only thing allowed to answer for a version the profile never saw."""
+    from config_manager import verification as verification_module
+
+    profile = _synthetic_profile({"resolution": "L3"}, version="1.0")
+    monkeypatch.setattr(
+        verification_module.profile_dispatch, "find_profile",
+        lambda name: profile if name == "Synthetic Test Game" else None,
+    )
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+    registry.current_path.write_text(json.dumps({
+        "format_version": 1,
+        "manifest_version": "test",
+        "minimum_client_version": "0.05.1",
+        "games": [{
+            "game": "Synthetic Test Game", "platform": "Steam", "version": "2.0",
+            "fingerprint": "*", "status": "write_verified", "config_patterns": [],
+            "supported_settings": [], "reader_id": "existing-parser", "writer_id": "existing-writer",
+        }],
+    }), encoding="utf-8")
+
+    result = registry.status_for("Synthetic Test Game", "Steam", "2.0", "anything")
+
+    assert result["status"] == "write_verified"
+    assert result["reason"] == "verified"
+    assert result["rule"]["version"] == "2.0"  # came from the rule file, not the profile
+
+
+def test_profile_platform_mismatch_falls_back_to_legacy(tmp_path, monkeypatch):
+    from config_manager import verification as verification_module
+
+    profile = _synthetic_profile({"resolution": "L3"}, platform="Steam")
+    monkeypatch.setattr(
+        verification_module.profile_dispatch, "find_profile",
+        lambda name: profile if name == "Synthetic Test Game" else None,
+    )
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+
+    result = registry.status_for("Synthetic Test Game", "Epic", "1.0", "anything")
+
+    assert result["reason"] == "game_not_listed"
+
+
+def test_real_black_myth_profile_upgrades_builtin_read_verified_baseline(tmp_path):
+    """Confirms §4.3's whole point with the one real profile that already
+    has non-empty verified[] data: before this change, Black Myth: Wukong
+    could only ever report the generic builtin "read_verified" baseline
+    (platform "*", version "unknown") since no real verified-games rule file
+    entry exists for it — meaning backup_and_write's _check_write_rule gate
+    always refused writes. The profile's real .9-runner-derived verified[]
+    entry now lets a matching platform/version report write_candidate
+    (worst level across its 9 settings is L2) instead."""
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+
+    result = registry.status_for("Black Myth: Wukong", "Steam", "21393610", "anything")
+
+    assert result["status"] == "write_candidate"
+    assert result["reason"] == "verified"
+    assert result["rule"]["anticheat"]["review"] == "n/a"
+    assert "frame_limit" in result["rule"]["supported_settings"]
+
+    # An unmatched version still falls back to the untouched legacy path —
+    # the generic builtin baseline, exactly as before this migration.
+    legacy = registry.status_for("Black Myth: Wukong", "Steam", "some-other-version", "anything")
+    assert legacy["status"] == "read_verified"
+    assert legacy["reason"] == "version_mismatch"
+
+
+def test_profile_anticheat_dict_flows_through_apply_anticheat_policy_unchanged(tmp_path):
+    """apply_anticheat_policy() and ensure_anticheat_reviewed() needed zero
+    code changes for §4.3: they already consume whatever "rule" dict
+    status_for() hands them generically, and a profile's anticheat field
+    shape (review/detected/scope) is identical to a legacy rule's."""
+    from config_manager.verification import apply_anticheat_policy
+
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+    verification = registry.status_for("Black Myth: Wukong", "Steam", "21393610", "anything")
+    assert verification["status"] == "write_candidate"
+
+    downgraded = apply_anticheat_policy(verification, "C:/x", detector=lambda _p: ["BattlEye"])
+
+    assert downgraded["status"] == "read_verified"
+    assert downgraded["reason"].startswith("anticheat_not_reviewed")

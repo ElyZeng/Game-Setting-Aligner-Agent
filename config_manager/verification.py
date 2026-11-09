@@ -19,7 +19,7 @@ import requests
 
 from .package import ConfigPackage
 from .process_guard import ProcessLister, running_processes_in
-from . import anticheat, registry_io
+from . import anticheat, profile_dispatch, registry_io
 from .safe_io import atomic_write_bytes, sha256_bytes
 from .settings_parser import FORZA_PRESET_SIGNATURES, UPSCALING, extract_key_settings, setting_options_for_game
 from .settings_writer import (
@@ -266,6 +266,93 @@ def merge_with_builtin(manifest: Dict[str, Any], client_version: str) -> Dict[st
         if (_normalise_title(rule["game"]), rule["platform"].lower()) not in remote_keys
     ] + list(remote_rules)
     return merged
+
+
+# P1 handoff §4.3: a profile's verified[] entries describe per-setting
+# confidence levels (see config_manager/profiles/loader.py's VerifiedEntry /
+# _VALID_LEVELS), not the legacy rule file's single game-level "status". The
+# mapping below is this migration's interpretation, chosen conservatively:
+#   L0 - untested / no evidence              -> candidate (same as unlisted)
+#   L1 - read confirmed only, write untried   -> read_verified
+#   L2 - write exercised, limited validation  -> write_candidate
+#   L3 - write + persist round-trip verified  -> write_verified
+#   L4 - L3 plus exhaustive per-case coverage  -> write_verified (same ceiling
+#        as L3 for gating purposes; L4 vs L3 is a provenance distinction for
+#        maintainers, not a looser or stricter write policy)
+_LEVEL_ORDER = {"L0": 0, "L1": 1, "L2": 2, "L3": 3, "L4": 4}
+_LEVEL_TO_STATUS = {
+    "L0": "candidate",
+    "L1": "read_verified",
+    "L2": "write_candidate",
+    "L3": "write_verified",
+    "L4": "write_verified",
+}
+
+
+def _status_from_profile(
+    game: str, platform: str, game_version: str, fingerprint: str
+) -> Optional[Dict[str, Any]]:
+    """Profile-first half of "profile first, rule file fallback" (handoff §4.3).
+
+    Returns ``None`` (never a status) whenever the profile doesn't have an
+    opinion for this exact game/platform/version/fingerprint combination, so
+    ``status_for`` can fall through to the untouched legacy rule-file logic
+    below — this function never invents a downgraded status (e.g.
+    "version_mismatch") the way the legacy matching loop does for a
+    non-matching rule, since a profile with no matching ``verified[]`` entry
+    simply has no basis to say anything at all, positive or negative, about
+    an unseen version/platform combination.
+
+    The game-level status reported is the WORST (lowest) per-setting level
+    in the matched entry's ``levels`` dict, not the best — a single L2
+    setting mixed in with eight L3s must not let the whole game report
+    "write_verified". ``supported_settings`` is deliberately exactly
+    ``levels.keys()`` (not "all settings this profile knows about"), so a
+    setting the profile doesn't mention in ``verified[]`` is correctly
+    treated as not write-approved by ``_check_write_rule``'s
+    ``supported_settings`` filter.
+
+    The synthesized "rule" dict's ``anticheat`` sub-dict is the profile's own
+    ``anticheat`` field verbatim — its shape (``review``/``detected``/
+    ``scope``) already matches what ``anticheat.check_write_allowed`` and
+    ``apply_anticheat_policy`` expect from a legacy rule's ``rule["anticheat"]``,
+    so neither of those two functions needs any change for this migration;
+    they keep consuming whatever "rule" dict they're handed, profile-derived
+    or legacy-derived, identically.
+    """
+    profile = profile_dispatch.find_profile(game)
+    if profile is None or not profile.verified:
+        return None
+    candidates = []
+    for entry in profile.verified:
+        if entry.platform.lower() not in ("*", platform.lower()):
+            continue
+        if profile.version_policy == "exact" and entry.version != game_version:
+            continue
+        if entry.fingerprint not in (None, "*", fingerprint):
+            continue
+        if not entry.levels:
+            continue
+        candidates.append(entry)
+    if not candidates:
+        return None
+    # Prefer whichever candidate pins down an exact fingerprint over one
+    # that matched via a wildcard/absent fingerprint — same tie-break
+    # direction as the legacy matching loop's own sort below.
+    candidates.sort(key=lambda e: e.fingerprint not in (None, "*"), reverse=True)
+    entry = candidates[0]
+    worst_level = min(entry.levels.values(), key=lambda level: _LEVEL_ORDER[level])
+    status = _LEVEL_TO_STATUS[worst_level]
+    rule = {
+        "game": game,
+        "platform": entry.platform,
+        "version": entry.version,
+        "fingerprint": entry.fingerprint or "*",
+        "status": status,
+        "supported_settings": sorted(entry.levels.keys()),
+        "anticheat": dict(profile.anticheat) if profile.anticheat else {"review": "n/a"},
+    }
+    return {"status": status, "reason": "verified", "rule": rule}
 
 
 class VerificationRegistry:
@@ -527,6 +614,9 @@ class VerificationRegistry:
         fingerprint: str,
     ) -> Dict[str, Any]:
         """Return the safest status that matches known game facts."""
+        profile_status = _status_from_profile(game, platform, game_version, fingerprint)
+        if profile_status is not None:
+            return profile_status
         matching = [
             rule for rule in self.load()["games"]
             if _normalise_title(rule["game"]) == _normalise_title(game)
