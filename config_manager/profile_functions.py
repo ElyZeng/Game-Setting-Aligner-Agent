@@ -125,6 +125,16 @@ def _cyberpunk_write(content: str, settings: Dict[str, Optional[str]]) -> str:
     return _write_cyberpunk(content, settings)
 
 
+def _gta_enhanced_parse(content: str) -> Dict[str, Optional[str]]:
+    """Read-only: no _gta_enhanced_write wrapper exists on purpose. See
+    grand-theft-auto-v-enhanced.json's _parser_fn_note for why this profile
+    does not (and must not) declare a writer_fn.
+    """
+    from .settings_parser import _parse_gta_enhanced_xml
+
+    return _parse_gta_enhanced_xml(content)
+
+
 def register_all() -> None:
     _registry.register("parser_fn", "black_myth_parse", _black_myth_parse)
     _registry.register("writer_fn", "black_myth_write", _black_myth_write)
@@ -139,6 +149,7 @@ def register_all() -> None:
     _registry.register("write_side_effect_fn", "forza_fullscreen_sidecar", _forza_fullscreen_sidecar)
     _registry.register("parser_fn", "cyberpunk_parse", _cyberpunk_parse)
     _registry.register("writer_fn", "cyberpunk_write", _cyberpunk_write)
+    _registry.register("parser_fn", "gta_enhanced_parse", _gta_enhanced_parse)
 
 
 register_all()

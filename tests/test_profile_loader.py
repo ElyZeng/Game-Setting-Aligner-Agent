@@ -47,6 +47,14 @@ def test_load_all_real_profiles_succeeds():
     assert cyberpunk_profile.parse_mode == "single_file"
     assert cyberpunk_profile.write_side_effect_fn is None
 
+    assert "grand-theft-auto-v-enhanced" in profiles
+    gta_profile = profiles["grand-theft-auto-v-enhanced"]
+    assert gta_profile.matches("Grand Theft Auto V Enhanced")
+    assert not gta_profile.matches("Grand Theft Auto V")
+    assert not gta_profile.matches("GTA V Enhanced")
+    assert gta_profile.parser_fn == "gta_enhanced_parse"
+    assert gta_profile.writer_fn is None
+
 
 def _write_profile(tmp_path, data):
     path = tmp_path / "broken.json"
