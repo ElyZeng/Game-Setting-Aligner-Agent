@@ -1706,3 +1706,125 @@ def test_profile_anticheat_dict_flows_through_apply_anticheat_policy_unchanged(t
 
     assert downgraded["status"] == "read_verified"
     assert downgraded["reason"].startswith("anticheat_not_reviewed")
+
+
+# --- Forza Horizon 6 / F1 25 profile migration (writer_id/supported_values) -
+
+def test_real_forza_profile_status_for_synthesizes_writer_id_and_supported_values(tmp_path):
+    """Confirms the landmine fix end to end at the status_for() layer: before
+    writer_id/supported_values were added to the Profile schema, populating
+    Forza's verified[] would have short-circuited status_for() away from the
+    legacy rule file (which used to carry these two fields) without putting
+    them anywhere else, permanently breaking the quick_preset write gate in
+    _check_write_rule (see that function's Forza-specific block). The real,
+    checked-in forza-horizon-6.json profile must now report both fields."""
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path)
+
+    result = registry.status_for(
+        "Forza Horizon 6", "Steam", "6.440.853.0",
+        "75102cb3dd1640ce99dc0dc4b47ea5104a58841de98152b3992974e7147bded5",
+    )
+
+    assert result["status"] == "write_candidate"
+    assert result["reason"] == "verified"
+    rule = result["rule"]
+    assert rule["writer_id"] == "forza-xml-writer"
+    assert rule["supported_values"] == {
+        "quick_preset": ["Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
+    }
+    assert "quick_preset" in rule["supported_settings"]
+
+    # A version/fingerprint that doesn't match the profile's verified[] entry
+    # must not pick up writer_id/supported_values from thin air.
+    mismatched = registry.status_for("Forza Horizon 6", "Steam", "1.0", "other-fingerprint")
+    assert mismatched["status"] != "write_candidate" or mismatched.get("reason") != "verified"
+
+
+def test_real_forza_profile_rule_satisfies_quick_preset_write_gate(tmp_path, monkeypatch):
+    """The actual payoff: feed the REAL rule dict produced by the real
+    checked-in profile (not a hand-written test double) through
+    backup_and_write/preflight_write's Forza-specific quick_preset gate in
+    _check_write_rule, and confirm the write now succeeds via profile-first
+    dispatch — this is the exact write path that would have silently broken
+    without the writer_id/supported_values schema extension."""
+    from config_manager.settings_parser import FORZA_PRESET_SIGNATURES
+    from config_manager.settings_writer import FORZA_PRESET_V52_FIELDS
+
+    game = "Forza Horizon 6"
+    probe_registry = VerificationRegistry("0.08.18", data_dir=tmp_path / "probe")
+    real_rule = probe_registry.status_for(
+        game, "Steam", "6.440.853.0",
+        "75102cb3dd1640ce99dc0dc4b47ea5104a58841de98152b3992974e7147bded5",
+    )["rule"]
+    assert real_rule["writer_id"] == "forza-xml-writer"  # sanity: didn't silently fall back to {}
+
+    config_path = (
+        tmp_path / "ForzaHorizon6" / "LocalStorage_Shared" / "ForzaUserConfigSelections" / "UserConfigSelections"
+    )
+    config_path.parent.mkdir(parents=True)
+    sidecar = config_path.parents[2] / "fullscreen_choice"
+    sidecar.write_bytes(b"\x01")
+    root = ET.Element("UserConfig", Version="52")
+    selections = ET.SubElement(root, "selections")
+    for option_id, value in FORZA_PRESET_SIGNATURES["Ultra"].items():
+        ET.SubElement(selections, "option", id=option_id, value=value)
+    fields = {}
+    for (tag, attr), values in FORZA_PRESET_V52_FIELDS.items():
+        fields.setdefault(tag, {})[attr] = values[3]
+    for tag, attributes in fields.items():
+        ET.SubElement(root, tag, attributes)
+    original = ET.tostring(root, encoding="unicode")
+    config_path.write_text(original, encoding="utf-8")
+    config_files = [{"expanded_path": str(config_path), "found": True, "content": original}]
+
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path / "rules")
+    registry.enable_test_writes()
+    monkeypatch.setattr(
+        VerificationRegistry, "status_for",
+        lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": real_rule},
+    )
+    # backup_and_write/preflight_write recompute the structural fingerprint
+    # from config_files themselves (status_for's own fingerprint argument is
+    # irrelevant to this check) — stand in for "this is the real machine
+    # whose install matches the profile's recorded fingerprint exactly".
+    monkeypatch.setattr(
+        "config_manager.verification.game_structural_fingerprint",
+        lambda *_args, **_kwargs: real_rule["fingerprint"],
+    )
+
+    writes = []
+    results = backup_and_write(
+        game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Ultra"},
+        lambda *_args: writes.append(True) or [{"path": str(config_path), "status": "ok"}], registry,
+    )
+
+    assert writes == [True]
+    assert results[0]["status"] == "ok"
+
+
+def test_real_f1_25_profile_status_for_write_candidate_without_extra_gate(tmp_path):
+    """F1 25 needed no writer_id/supported_values (no F1-specific write gate
+    exists in _check_write_rule), so its real profile's synthesized rule
+    should carry the generic supported_settings list and nothing else new."""
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path)
+
+    result = registry.status_for(
+        "F1® 25", "Steam", "1,0,141,2878",
+        "30ecff703320a613209099ee3014ad6dc70f6b51c83cf2a2fb86de822b7c45c7",
+    )
+
+    assert result["status"] == "write_candidate"
+    assert result["reason"] == "verified"
+    rule = result["rule"]
+    assert rule.get("writer_id") is None
+    assert rule.get("supported_values") == {}
+    assert "quick_preset" in rule["supported_settings"]
+
+    # The legacy rule file's plain-ASCII "F1 25" name is a different exact
+    # match target than the profile's "F1® 25" (Profile.matches() is exact,
+    # case-insensitive only) — confirm it simply doesn't resolve to this
+    # profile at all, regardless of whatever legacy/builtin fallback applies.
+    from config_manager import profile_dispatch
+
+    assert profile_dispatch.find_profile("F1® 25") is not None
+    assert profile_dispatch.find_profile("F1 25") is None

@@ -319,6 +319,20 @@ def _status_from_profile(
     so neither of those two functions needs any change for this migration;
     they keep consuming whatever "rule" dict they're handed, profile-derived
     or legacy-derived, identically.
+
+    ``writer_id``/``supported_values`` are likewise copied verbatim from the
+    profile (both default to "nothing", i.e. ``None``/``{}``, for profiles
+    that don't set them). These exist for games whose legacy write gate
+    checks more than just "is this setting in supported_settings" — Forza
+    Horizon 6's ``quick_preset`` write is additionally gated in
+    ``_check_write_rule`` on ``rule["writer_id"] == "forza-xml-writer"`` and
+    an exact ``rule["supported_values"]["quick_preset"]`` allow-list. Without
+    this, a Forza profile with a matching ``verified[]`` entry would still
+    short-circuit ``status_for`` away from the legacy rule file (which used
+    to carry those two fields) and then fail every ``quick_preset`` write
+    with ``write_not_allowed:exact_forza_preset_rule_required`` even though
+    the profile's own ``levels`` say that setting is write_candidate —
+    see GSAA_P1_handoff.md §4.2 follow-up discussion before this field existed.
     """
     profile = profile_dispatch.find_profile(game)
     if profile is None or not profile.verified:
@@ -351,6 +365,8 @@ def _status_from_profile(
         "status": status,
         "supported_settings": sorted(entry.levels.keys()),
         "anticheat": dict(profile.anticheat) if profile.anticheat else {"review": "n/a"},
+        "writer_id": profile.writer_id,
+        "supported_values": dict(profile.supported_values) if profile.supported_values else {},
     }
     return {"status": status, "reason": "verified", "rule": rule}
 

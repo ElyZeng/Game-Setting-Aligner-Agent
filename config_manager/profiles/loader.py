@@ -89,6 +89,8 @@ class Profile:
     write_detail: Optional[str] = None
     parse_mode: str = "single_file"
     write_side_effect_fn: Optional[str] = None
+    writer_id: Optional[str] = None
+    supported_values: Dict[str, List[str]] = field(default_factory=dict)
     source_path: Optional[Path] = None
 
     def matches(self, game_name: str) -> bool:
@@ -243,6 +245,25 @@ def _parse_anticheat(raw: Dict[str, Any], path: Path) -> Dict[str, Any]:
     return raw
 
 
+def _parse_supported_values(raw: Any, path: Path) -> Dict[str, List[str]]:
+    """Optional per-setting allow-lists for games with a dedicated legacy
+    write gate keyed on an exact value list (see verification.py's
+    ``_check_write_rule`` Forza Horizon 6 ``quick_preset`` block — it
+    requires ``rule["supported_values"]["quick_preset"]`` to be a concrete
+    allow-list, not just a setting name in ``supported_settings``). Most
+    profiles leave this empty; ``_status_from_profile`` copies it verbatim
+    into the synthesized rule dict next to ``writer_id``, same pattern as
+    ``anticheat``.
+    """
+    raw = raw or {}
+    if not isinstance(raw, dict):
+        raise ProfileError(path, "supported_values must be an object mapping setting key -> list of allowed values")
+    for key, values in raw.items():
+        if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+            raise ProfileError(path, f"supported_values.{key} must be a list of strings")
+    return raw
+
+
 def load_profile(path: Path) -> Profile:
     """Parse and validate one profile JSON file. Raises ProfileError on any problem."""
     path = Path(path)
@@ -306,6 +327,11 @@ def load_profile(path: Path) -> Profile:
         if file_key not in files:
             raise ProfileError(path, f"required_keys references unknown file {file_key!r}")
 
+    writer_id = raw.get("writer_id")
+    if writer_id is not None and not isinstance(writer_id, str):
+        raise ProfileError(path, "writer_id must be a string")
+    supported_values = _parse_supported_values(raw.get("supported_values"), path)
+
     return Profile(
         id=profile_id,
         match_names=match_names,
@@ -326,6 +352,8 @@ def load_profile(path: Path) -> Profile:
         write_detail=raw.get("write_detail"),
         parse_mode=parse_mode,
         write_side_effect_fn=write_side_effect_fn,
+        writer_id=writer_id,
+        supported_values=supported_values,
         source_path=path,
     )
 

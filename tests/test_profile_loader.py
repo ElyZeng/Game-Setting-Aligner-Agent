@@ -26,6 +26,8 @@ def test_load_all_real_profiles_succeeds():
     f1_profile = profiles["f1-25"]
     assert f1_profile.matches("F1® 25")
     assert not f1_profile.matches("F1 25")
+    assert f1_profile.writer_id is None
+    assert f1_profile.supported_values == {}
 
     assert "cs2" in profiles
     cs2_profile = profiles["cs2"]
@@ -39,6 +41,10 @@ def test_load_all_real_profiles_succeeds():
     assert not forza_profile.matches("Forza Horizon 5")
     assert not forza_profile.matches("Forza")
     assert forza_profile.write_side_effect_fn == "forza_fullscreen_sidecar"
+    assert forza_profile.writer_id == "forza-xml-writer"
+    assert forza_profile.supported_values == {
+        "quick_preset": ["Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
+    }
 
     assert "cyberpunk-2077" in profiles
     cyberpunk_profile = profiles["cyberpunk-2077"]
@@ -202,4 +208,53 @@ def test_required_keys_reference_unknown_file_raises(tmp_path):
     data["required_keys"] = {"aux": ["SomeKey"]}
     path = _write_profile(tmp_path, data)
     with pytest.raises(ProfileError, match="aux"):
+        load_profile(path)
+
+
+def test_writer_id_and_supported_values_default_to_none_and_empty(tmp_path):
+    path = _write_profile(tmp_path, MINIMAL_VALID)
+    profile = load_profile(path)
+    assert profile.writer_id is None
+    assert profile.supported_values == {}
+
+
+def test_writer_id_and_supported_values_parse(tmp_path):
+    data = dict(MINIMAL_VALID)
+    data["writer_id"] = "forza-xml-writer"
+    data["supported_values"] = {"quick_preset": ["Low", "High"]}
+    path = _write_profile(tmp_path, data)
+    profile = load_profile(path)
+    assert profile.writer_id == "forza-xml-writer"
+    assert profile.supported_values == {"quick_preset": ["Low", "High"]}
+
+
+def test_non_string_writer_id_raises(tmp_path):
+    data = dict(MINIMAL_VALID)
+    data["writer_id"] = 123
+    path = _write_profile(tmp_path, data)
+    with pytest.raises(ProfileError, match="writer_id"):
+        load_profile(path)
+
+
+def test_non_dict_supported_values_raises(tmp_path):
+    data = dict(MINIMAL_VALID)
+    data["supported_values"] = ["Low", "High"]
+    path = _write_profile(tmp_path, data)
+    with pytest.raises(ProfileError, match="supported_values"):
+        load_profile(path)
+
+
+def test_supported_values_with_non_list_entry_raises(tmp_path):
+    data = dict(MINIMAL_VALID)
+    data["supported_values"] = {"quick_preset": "Low"}
+    path = _write_profile(tmp_path, data)
+    with pytest.raises(ProfileError, match="supported_values"):
+        load_profile(path)
+
+
+def test_supported_values_with_non_string_list_item_raises(tmp_path):
+    data = dict(MINIMAL_VALID)
+    data["supported_values"] = {"quick_preset": ["Low", 5]}
+    path = _write_profile(tmp_path, data)
+    with pytest.raises(ProfileError, match="supported_values"):
         load_profile(path)

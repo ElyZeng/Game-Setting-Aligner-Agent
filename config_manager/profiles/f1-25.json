@@ -41,8 +41,23 @@
     ]
   },
   "version_policy": "exact",
-  "verified": [],
-  "_verified_note": "No local runner/rules verified-games rule file or .9 run evidence exists in this checkout for F1® 25 (same caveat as black-myth-wukong-benchmark.json) - left empty rather than fabricated. Fill in from a real verification run before relying on this for write-gating.",
+  "verified": [
+    {
+      "platform": "Steam",
+      "version": "1,0,141,2878",
+      "fingerprint": "30ecff703320a613209099ee3014ad6dc70f6b51c83cf2a2fb86de822b7c45c7",
+      "levels": {
+        "resolution": "L2",
+        "screen_mode": "L2",
+        "vsync": "L2",
+        "frame_limit": "L2",
+        "upscaling": "L2",
+        "upscaling_mode": "L2",
+        "quick_preset": "L2"
+      }
+    }
+  ],
+  "_verified_note": "Transcribed from release-assets/forza-write-candidate-rules.json's F1 25 entry (the richest of the legacy sources - verification-rules-v1.2.2/verified-games.json has an older fingerprint and omits quick_preset; v1.2.3 has this fingerprint but still omits quick_preset; v1.2.4 adds quick_preset but not upscaling_mode). Game name in the legacy rule file is the plain ASCII \"F1 25\" (no (R) symbol) - that's fine, legacy matching there uses _normalise_title() which strips punctuation, but this profile's own match.names is the literal \"F1® 25\" string and Profile.matches() does an exact (case-insensitive) compare, so this verified[] entry only ever activates when the live code passes that exact literal string as the game name - already confirmed true for this profile's existing read-side dispatch (unrelated to this change). All levels are L2 (write_candidate), not L3: every legacy source only ever recorded a single game-level status=\"write_candidate\" with no finer per-setting/persist-verified distinction, so there is no basis for claiming L3 on any individual setting. dynamic_resolution/frame_generation are deliberately left out of levels (never in any legacy supported_settings list for this game either) - they stay unapproved for writes exactly as before. Unlike Forza Horizon 6, F1 25's quick_preset write has no extra writer_id/supported_values gate in verification.py (confirmed: _check_write_rule has no F1-specific branch, only the generic supported_settings + check_values_allowed path, plus two unconditional and unrelated checks - frame_generation+fullscreen incompatibility, and a quick_preset readback-leniency allowance for the game's own \"Custom (<preset>)\" echo format) - so no new profile-loader fields were needed for this one, just the verified[] entry itself.",
   "anticheat": {
     "detected": [],
     "review": "n/a",
