@@ -1,0 +1,46 @@
+{
+  "id": "clair-obscur-expedition-33",
+  "match": { "names": ["Clair Obscur: Expedition 33"] },
+  "engine": "unreal",
+  "files": {
+    "main": { "path": "GameUserSettings.ini", "codec": "unreal_ini" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "expedition_33_parse",
+  "parse_mode": "single_file",
+  "_parser_fn_note": "READ-ONLY migration, by design - this profile intentionally has NO writer_fn. parser_fn wraps settings_parser._parse_expedition_33 verbatim (config_manager/profile_functions.py) so extract_key_settings()'s profile-first branch is a zero-behaviour-change read migration. dynamic_resolution is never set by the legacy parser so it is omitted from 'settings', same convention as the GTA profile. WHY NO writer_fn, AND WHY THIS IS NOT 'JUST LIKE GTA': this game was labelled '(read-only)' in GSAA_P1_handoff.md §4.2, but direct code research during this migration found that claim was NOT actually true of the pre-existing legacy dispatch - _detect_parser_type() in settings_writer.py had no dedicated branch for 'clair obscur'/'expedition 33' at all, so Expedition 33's real GameUserSettings.ini (which genuinely contains ResolutionSizeX/FullscreenMode) fell through to the generic 'if \"ResolutionSizeX\" in content or \"FullscreenMode\" in content: return \"unreal_ini\"' sniff and was classified exactly like Black Myth. That meant write_settings() called directly for this title would really invoke _write_unreal_ini() and _safe_write() the file to disk - not a safe no-op like the GTA/SF6 dead-end branches. Worse, _parse_expedition_33() reads quick_preset from the sg.*Quality keys (sg.ViewDistanceQuality/sg.ShadowQuality/sg.TextureQuality/sg.EffectsQuality, excluding sg.ResolutionQuality), but _write_unreal_ini() only ever patches GPUConfigPreset for quick_preset writes - a genuine pre-existing read/write field mismatch bug that had simply never been exercised because nothing in the test suite or any real caller ever called write_settings() for this game before. Per explicit user decision (2026-11-09, after being shown this finding and asked how to proceed), this gap was fixed in the SAME change as this profile: settings_writer.py's _detect_parser_type() now has an explicit 'if \"clair obscur\" in name_lower or \"expedition 33\" in name_lower: return \"unknown\"' guard, mirroring the pre-existing Street Fighter 6 guard immediately above it, with a new regression test (tests/test_write_safety.py::test_expedition_33_not_routed_to_generic_unreal_writer) proving write_settings() now reports {status:'skipped', detail:\"Unknown parser type for 'Clair Obscur: Expedition 33'\"} and never touches the file on disk, even when the content contains ResolutionSizeX/FullscreenMode. This profile's lack of writer_fn is therefore now consistent with that corrected legacy behaviour, not masking a live bug underneath it.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "ResolutionSizeX",
+      "ResolutionSizeY",
+      "FullscreenMode",
+      "sg.ViewDistanceQuality",
+      "sg.ShadowQuality",
+      "sg.TextureQuality",
+      "sg.EffectsQuality"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No release-review or validation-evidence artifacts for this title were found during research; left empty rather than fabricating data.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "No Clair Obscur / Expedition 33 entry found in config_manager/anticheat.py's detection tables; not independently re-verified against a real install.",
+    "scope": []
+  },
+  "process_ignore": [],
+  "_process_ignore_note": "No Expedition-33-specific process_ignore entries identified in the legacy code or existing tests; left empty rather than guessed."
+}

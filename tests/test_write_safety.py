@@ -365,6 +365,41 @@ def test_unknown_xml_is_not_sent_to_forza_writer(tmp_path):
     assert _detect_parser_type("Street Fighter 6", files) == "unknown"
 
 
+def test_expedition_33_not_routed_to_generic_unreal_writer(tmp_path):
+    """Regression guard for the pre-existing dispatch gap found during the
+    P1 profile migration: Clair Obscur: Expedition 33's GameUserSettings.ini
+    genuinely contains ResolutionSizeX/FullscreenMode, so prior to the
+    explicit guard in _detect_parser_type it was silently classified as
+    "unreal_ini" and write_settings() would really call _write_unreal_ini()
+    on it - even though _parse_expedition_33() reads quick_preset from
+    sg.*Quality keys that _write_unreal_ini() never touches (it only patches
+    GPUConfigPreset). Must resolve to "unknown" (read-only) like Street
+    Fighter 6, not "unreal_ini", regardless of what the file actually
+    contains.
+    """
+    from config_manager.settings_writer import _detect_parser_type, write_settings
+
+    content = (
+        "ResolutionSizeX=3840\n"
+        "ResolutionSizeY=2160\n"
+        "FullscreenMode=1\n"
+        "bUseVSync=False\n"
+        "sg.ViewDistanceQuality=1\n"
+    )
+    path = tmp_path / "GameUserSettings.ini"
+    path.write_text(content, encoding="utf-8")
+    files = [{"expanded_path": str(path), "found": True, "content": content}]
+
+    assert _detect_parser_type("Clair Obscur: Expedition 33", files) == "unknown"
+
+    results = write_settings("Clair Obscur: Expedition 33", files, {"quick_preset": "Low"})
+    assert results == [
+        {"path": "", "status": "skipped", "detail": "Unknown parser type for 'Clair Obscur: Expedition 33'"}
+    ]
+    # and, crucially, the file on disk was never touched
+    assert path.read_text(encoding="utf-8") == content
+
+
 # ── S6: values must be ones the game offers ─────────────────────────
 
 

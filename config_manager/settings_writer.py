@@ -1416,6 +1416,18 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
         # Read-only: SF6 has a dedicated parser but no writer; its INI is not
         # an Unreal GameUserSettings file.
         return "unknown"
+    if "clair obscur" in name_lower or "expedition 33" in name_lower:
+        # Read-only: Expedition 33's GameUserSettings.ini genuinely does
+        # contain ResolutionSizeX/FullscreenMode, so without this explicit
+        # guard it would fall through to the generic "unreal_ini" sniff below
+        # and _write_unreal_ini() would actually be invoked on it. That would
+        # be unsafe: _parse_expedition_33() reads quick_preset from the
+        # sg.*Quality keys, but _write_unreal_ini() only ever patches
+        # GPUConfigPreset for quick_preset writes - a pre-existing read/write
+        # field mismatch that was never exercised because nothing called this
+        # path for this title before. Treat it the same as SF6 until a real,
+        # verified writer for this format is built.
+        return "unknown"
 
     readable = [c for c in config_files if c.get("content") and c.get("found")]
 

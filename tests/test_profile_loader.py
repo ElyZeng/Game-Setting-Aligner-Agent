@@ -55,6 +55,21 @@ def test_load_all_real_profiles_succeeds():
     assert gta_profile.parser_fn == "gta_enhanced_parse"
     assert gta_profile.writer_fn is None
 
+    assert "clair-obscur-expedition-33" in profiles
+    expedition_profile = profiles["clair-obscur-expedition-33"]
+    assert expedition_profile.matches("Clair Obscur: Expedition 33")
+    assert not expedition_profile.matches("Clair Obscur")
+    assert not expedition_profile.matches("Expedition 33")
+    assert expedition_profile.parser_fn == "expedition_33_parse"
+    assert expedition_profile.writer_fn is None
+
+    assert "street-fighter-6" in profiles
+    sf6_profile = profiles["street-fighter-6"]
+    assert sf6_profile.matches("Street Fighter 6")
+    assert not sf6_profile.matches("Street Fighter V")
+    assert sf6_profile.parser_fn == "sf6_parse"
+    assert sf6_profile.writer_fn is None
+
 
 def _write_profile(tmp_path, data):
     path = tmp_path / "broken.json"

@@ -1,0 +1,46 @@
+{
+  "id": "street-fighter-6",
+  "match": { "names": ["Street Fighter 6"] },
+  "engine": "re-engine",
+  "files": {
+    "main": { "path": "config.ini", "codec": "ini" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "quick_preset": { "file": "main" },
+    "frame_generation": { "file": "main" }
+  },
+  "parser_fn": "sf6_parse",
+  "parse_mode": "single_file",
+  "_parser_fn_note": "READ-ONLY migration, by design - this profile intentionally has NO writer_fn. parser_fn wraps settings_parser._parse_sf6 verbatim (config_manager/profile_functions.py) so extract_key_settings()'s profile-first branch is a zero-behaviour-change read migration. upscaling_mode and frame_generation are hardcoded 'N/A' by the legacy parser itself (SF6's config.ini genuinely has no such fields - confirmed by reading _parse_sf6's body), not something this profile invents. WHY NO writer_fn: unlike GTA (real guarded writer lives elsewhere, bypassing write_settings()) this is a genuine, fully-confirmed dead end - no _write_sf6 function exists anywhere in the codebase, settings_writer.py's _detect_parser_type() has an explicit, pre-existing 'if \"street fighter 6\" in name_lower: return \"unknown\"' guard with the comment 'Read-only: SF6 has a dedicated parser but no writer; its INI is not an Unreal GameUserSettings file', CHANGELOG.md documents 'Street Fighter 6 stays read-only', and tests/test_write_safety.py::test_unknown_xml_is_not_sent_to_forza_writer already asserts _detect_parser_type returns 'unknown' for this title. Nothing about this migration changes any of that - write_settings() called for this game continues to hit its generic else-branch and report {status:'skipped', detail:\"Unknown parser type for 'Street Fighter 6'\"}, exactly as before this profile existed.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "FullScreenDisplayMode",
+      "FullScreenMode",
+      "WindowMode",
+      "VSync",
+      "MaxFramerate",
+      "GlobalSettings",
+      "UpscaleType"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No release-review or validation-evidence artifacts for this title were found during research; left empty rather than fabricating data.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "validation/workstation.json has an entry for 'Street Fighter™ 6' with an empty config_files list and no anti-cheat field at all; not independently re-verified against a real install.",
+    "scope": []
+  },
+  "process_ignore": [],
+  "_process_ignore_note": "No SF6-specific process_ignore entries identified in the legacy code or existing tests; left empty rather than guessed."
+}

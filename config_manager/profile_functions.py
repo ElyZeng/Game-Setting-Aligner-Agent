@@ -135,6 +135,27 @@ def _gta_enhanced_parse(content: str) -> Dict[str, Optional[str]]:
     return _parse_gta_enhanced_xml(content)
 
 
+def _expedition_33_parse(content: str) -> Dict[str, Optional[str]]:
+    """Read-only: no writer wrapper exists on purpose. See
+    clair-obscur-expedition-33.json's _parser_fn_note - this title's real
+    writer_fn gap (it used to fall through to the generic "unreal_ini"
+    writer by accident) was fixed in settings_writer._detect_parser_type()
+    as part of this same migration, not papered over here.
+    """
+    from .settings_parser import _parse_expedition_33
+
+    return _parse_expedition_33(content)
+
+
+def _sf6_parse(content: str) -> Dict[str, Optional[str]]:
+    """Read-only: no _write_sf6 function exists anywhere in the codebase,
+    by design. See street-fighter-6.json's _parser_fn_note.
+    """
+    from .settings_parser import _parse_sf6
+
+    return _parse_sf6(content)
+
+
 def register_all() -> None:
     _registry.register("parser_fn", "black_myth_parse", _black_myth_parse)
     _registry.register("writer_fn", "black_myth_write", _black_myth_write)
@@ -150,6 +171,8 @@ def register_all() -> None:
     _registry.register("parser_fn", "cyberpunk_parse", _cyberpunk_parse)
     _registry.register("writer_fn", "cyberpunk_write", _cyberpunk_write)
     _registry.register("parser_fn", "gta_enhanced_parse", _gta_enhanced_parse)
+    _registry.register("parser_fn", "expedition_33_parse", _expedition_33_parse)
+    _registry.register("parser_fn", "sf6_parse", _sf6_parse)
 
 
 register_all()
