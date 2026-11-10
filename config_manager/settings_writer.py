@@ -1489,19 +1489,45 @@ def write_settings(
     if profile is not None and profile.writer_fn:
         main_file = profile.files.get("main")
         if main_file is not None:
+            main_is_registry = main_file.codec == "registry"
             main_name = Path(main_file.path).name.casefold()
             for cfg in readable:
-                if Path(cfg["expanded_path"]).name.casefold() == main_name:
-                    path = cfg["expanded_path"]
-                    try:
-                        new_content = profile.write(cfg["content"], to_write)
+                cfg_is_registry = cfg.get("type") == "registry"
+                if cfg_is_registry:
+                    # Registry-type config_files entries (see
+                    # config_exporter._read_registry_key) never carry an
+                    # "expanded_path" key — only type/registry_path/found/
+                    # content/error. Match against the profile's declared
+                    # registry path instead of a filesystem name, and only
+                    # when the profile's main file is itself registry-backed.
+                    if not main_is_registry:
+                        continue
+                    reg_path = cfg.get("registry_path") or ""
+                    if reg_path.replace("/", "\\").casefold() != str(main_file.path).replace("/", "\\").casefold():
+                        continue
+                    path = reg_path
+                else:
+                    expanded_path = cfg.get("expanded_path")
+                    if not expanded_path or Path(expanded_path).name.casefold() != main_name:
+                        continue
+                    path = expanded_path
+                try:
+                    new_content = profile.write(cfg["content"], to_write)
+                    if cfg_is_registry:
+                        # Route to the guarded registry writer (registry_io)
+                        # instead of _safe_write(), which is a plain filesystem
+                        # write and would corrupt/no-op on a registry path.
+                        changes = registry_io.diff_changes(cfg["content"], new_content)
+                        written = registry_io.write_changes(path, changes, registry_io.default_backend())
+                        detail = profile.write_detail or f"{profile.id} registry settings written ({len(written)} value(s))"
+                    else:
                         _safe_write(path, new_content)
                         detail = profile.write_detail or f"{profile.id} settings written"
-                        results.append({"path": path, "status": "ok", "detail": detail})
-                        results.extend(profile.write_side_effects(config_files, to_write))
-                    except Exception as e:
-                        results.append({"path": path, "status": "error", "detail": str(e)})
-                    return results
+                    results.append({"path": path, "status": "ok", "detail": detail})
+                    results.extend(profile.write_side_effects(config_files, to_write))
+                except Exception as e:
+                    results.append({"path": path, "status": "error", "detail": str(e)})
+                return results
             results.append({"path": "", "status": "skipped", "detail": f"No {main_name} found"})
             return results
 
