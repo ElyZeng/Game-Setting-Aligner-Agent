@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Set
 
 ProcessLister = Callable[[], Iterable[str]]
 
@@ -91,16 +91,30 @@ def _normalise(path: str) -> str:
 
 
 def running_processes_in(
-    install_path: str, lister: Optional[ProcessLister] = None
+    install_path: str,
+    lister: Optional[ProcessLister] = None,
+    ignore: Optional[Iterable[str]] = None,
 ) -> List[str]:
-    """Running executables located inside *install_path* (sorted, unique)."""
+    """Running executables located inside *install_path* (sorted, unique).
+
+    *ignore* is an optional list of executable basenames (matched
+    case-insensitively, e.g. ``"EpicWebHelper.exe"``) that are never reported
+    as "the game is running" even though they live under *install_path* —
+    some games launch auxiliary/helper processes from inside their own
+    install folder that are not the game itself and should not block a
+    write. This is additive to the general folder-prefix check, never a
+    replacement for it: anything not explicitly ignored is still reported.
+    """
     if not install_path or not Path(install_path).is_dir():
         return []
     root = _normalise(install_path)
     prefix = root.rstrip("\\/") + os.sep
+    ignore_names: Set[str] = {name.casefold() for name in (ignore or ())}
     found = set()
     for executable in (lister or list_running_executables)():
         if not executable:
+            continue
+        if ignore_names and Path(executable).name.casefold() in ignore_names:
             continue
         normalised = _normalise(executable)
         if normalised == root or normalised.startswith(prefix):

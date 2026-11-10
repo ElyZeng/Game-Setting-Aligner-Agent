@@ -1048,13 +1048,30 @@ def apply_anticheat_policy(
 
 
 def ensure_game_not_running(
-    install_path: Optional[str], process_lister: Optional[ProcessLister] = None
+    install_path: Optional[str],
+    process_lister: Optional[ProcessLister] = None,
+    game: Optional[str] = None,
 ) -> None:
-    """Raise ``game_running:<exe,...>`` if the game is running; fail closed."""
+    """Raise ``game_running:<exe,...>`` if the game is running; fail closed.
+
+    When *game* is given and matches a profile with a non-empty
+    ``process_ignore`` list (e.g. Black Myth: Wukong's Epic build launching
+    ``EpicWebHelper.exe`` from inside the install folder), those executable
+    names are additionally ignored on top of whatever this check already
+    ignores — games with no profile, or a profile with an empty/absent
+    ``process_ignore``, behave exactly as before.
+    """
     if not install_path:
         return
+    ignore: List[str] = []
+    if game:
+        from . import profile_dispatch
+
+        profile = profile_dispatch.find_profile(game)
+        if profile is not None and profile.process_ignore:
+            ignore = list(profile.process_ignore)
     try:
-        running = running_processes_in(install_path, process_lister)
+        running = running_processes_in(install_path, process_lister, ignore=ignore)
     except OSError as exc:
         raise VerificationError("process_check_failed") from exc
     if running:
@@ -1131,7 +1148,7 @@ def restore_pristine_backup(
     that did not exist before the first write (``file: null``) are removed.
     Refused while the game is running when *install_path* is given.
     """
-    ensure_game_not_running(install_path, process_lister)
+    ensure_game_not_running(install_path, process_lister, game=game)
     pristine = pristine_backup_dir(game, registry)
     manifest_path = pristine / BACKUP_MANIFEST_NAME
     if not manifest_path.is_file():
@@ -1194,7 +1211,7 @@ def backup_and_write(
     """
     if not registry.test_write_enabled():
         raise VerificationError("test_write_consent_required")
-    ensure_game_not_running(install_path, process_lister)
+    ensure_game_not_running(install_path, process_lister, game=game)
     gta = "grand theft auto v enhanced" in game.casefold()
     refreshed_files: List[Dict[str, Any]] = []
     for config_file in config_files:

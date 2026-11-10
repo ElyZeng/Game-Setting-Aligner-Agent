@@ -57,5 +57,5 @@
     "scope": ["resolution", "screen_mode", "vsync", "frame_limit", "dynamic_resolution", "upscaling", "upscaling_mode", "frame_generation", "quick_preset"]
   },
   "process_ignore": ["EpicWebHelper.exe"],
-  "_process_ignore_note": "Same Epic build auxiliary process as the retail game (see black-myth-wukong.json); process_guard.py does not yet read this field."
+  "_process_ignore_note": "Same Epic build auxiliary process as the retail game (see black-myth-wukong.json); now wired into process_guard.py via verification.ensure_game_not_running(..., game=...)."
 }

@@ -259,6 +259,83 @@ def test_running_processes_in_missing_folder_is_empty(tmp_path):
     assert running_processes_in(str(tmp_path / "missing"), lambda: ["x"]) == []
 
 
+def test_running_processes_in_ignores_named_helper_process(tmp_path):
+    install = tmp_path / "install"
+    install.mkdir()
+    helper = str(install / "EpicWebHelper.exe")
+    game_exe = str(install / "Game-Win64-Shipping.exe")
+
+    assert running_processes_in(str(install), lambda: [helper], ignore=["EpicWebHelper.exe"]) == []
+    # Case-insensitive match, and non-ignored processes are still reported.
+    assert running_processes_in(
+        str(install), lambda: [helper, game_exe], ignore=["epicwebhelper.exe"]
+    ) == [game_exe]
+
+
+def test_write_refused_while_profile_ignored_helper_also_running(tmp_path, monkeypatch):
+    """A profile's process_ignore list must not weaken the guard for
+    processes it does NOT name — only the exact listed executable(s) are
+    exempted, the game's own process still blocks the write."""
+    from config_manager import profile_dispatch
+
+    path, files = _game_file(tmp_path, INI_CRLF.encode())
+    install = tmp_path / "install"
+    (install / "Binaries").mkdir(parents=True)
+    helper = str(install / "EpicWebHelper.exe")
+    exe = str(install / "Binaries" / "Game-Win64-Shipping.exe")
+
+    profile = SimpleNamespace(process_ignore=["EpicWebHelper.exe"])
+    monkeypatch.setattr(profile_dispatch, "find_profile", lambda name: profile if name == GAME else None)
+
+    with pytest.raises(VerificationError, match="game_running:Game-Win64-Shipping.exe"):
+        backup_and_write(
+            GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, _registry(tmp_path),
+            install_path=str(install), process_lister=lambda: [helper, exe],
+        )
+    assert path.read_bytes() == INI_CRLF.encode()
+
+
+def test_write_allowed_when_only_profile_ignored_helper_is_running(tmp_path, monkeypatch):
+    """The actual backlog item: a game whose profile declares
+    process_ignore (e.g. Black Myth's EpicWebHelper.exe) must not be
+    refused a write just because that helper process is running inside its
+    install folder."""
+    from config_manager import profile_dispatch
+
+    _path, files = _game_file(tmp_path, INI_CRLF.encode())
+    install = tmp_path / "install"
+    install.mkdir()
+    helper = str(install / "EpicWebHelper.exe")
+
+    profile = SimpleNamespace(process_ignore=["EpicWebHelper.exe"], parser_fn=None, writer_fn=None)
+    monkeypatch.setattr(profile_dispatch, "find_profile", lambda name: profile if name == GAME else None)
+
+    result = backup_and_write(
+        GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, _registry(tmp_path),
+        install_path=str(install), process_lister=lambda: [helper],
+    )
+    assert result[0]["status"] == "ok"
+
+
+def test_write_refused_as_before_when_game_has_no_profile(tmp_path, monkeypatch):
+    """Regression guard: a game with no profile at all (or whose profile has
+    an empty/absent process_ignore) must behave exactly as it did before —
+    no silent change for every other, non-profile-migrated game."""
+    from config_manager import profile_dispatch
+
+    monkeypatch.setattr(profile_dispatch, "find_profile", lambda name: None)
+    path, files = _game_file(tmp_path, INI_CRLF.encode())
+    install = tmp_path / "install"
+    (install / "Binaries").mkdir(parents=True)
+    exe = str(install / "Binaries" / "Game-Win64-Shipping.exe")
+    with pytest.raises(VerificationError, match="game_running:Game-Win64-Shipping.exe"):
+        backup_and_write(
+            GAME, "Steam", "1", files, {"vsync": "Off"}, write_settings, _registry(tmp_path),
+            install_path=str(install), process_lister=lambda: [exe],
+        )
+    assert path.read_bytes() == INI_CRLF.encode()
+
+
 def test_describe_verification_error():
     text = describe_verification_error(VerificationError("game_running:a.exe,b.exe"))
     assert "a.exe,b.exe" in text and "Close the game" in text
