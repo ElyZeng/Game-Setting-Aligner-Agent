@@ -29,6 +29,29 @@ Validate parser behavior from controlled in-game changes before implementing or 
    `upscaling`, `upscaling_mode`, `frame_generation`, `quick_preset`.
 6. Mark `N/A` only when the retail game genuinely lacks the setting.
 
+## Draft Mapping (Claude proposes, tester confirms)
+
+Step 5's label-to-schema mapping starts as a Claude-authored draft, not a tester
+transcription:
+
+1. Run `explore.py` (no-launch dry run if possible, otherwise a real explore
+   pass) to produce `draft.json`'s `ui_rows`/`ui_menu_options`.
+2. Claude proposes, for every row, which of the 9 schema keys it maps to and
+   which schema enum value each observed UI label corresponds to, citing the
+   exact UI label text it used.
+3. Each proposed row is tagged `certain` (matches an established pattern seen
+   in other games, e.g. a toggle literally labeled "V-Sync") or `ambiguous`
+   (unfamiliar wording, localized/non-English labels, a label that could
+   plausibly map to more than one schema key, or a value scale that doesn't
+   obviously correspond to an existing enum).
+4. The tester reviews the whole draft table before treating step 5 as done,
+   correcting or rejecting any row — including `certain` ones.
+5. The draft is a hypothesis, never evidence. Entry Criteria step 5 is not
+   satisfied by the draft alone: every mapping still has to pass the
+   Interactive Loop and Completion requirements below (real in-game sampling,
+   parser comparison, two stable reads) before it can be recorded as Pass in
+   the sampling matrix or COLLECT.txt.
+
 ## Sampling Matrix
 
 Build a table with one row per setting and these columns:

@@ -14,7 +14,11 @@ Exercise every legal writer option against the real game config while the game i
 
 Do not perform real writes until all are true:
 
-1. `game-read-validation` is complete for the exact retail game/version/platform.
+1. `game-read-validation` is complete for the exact retail game/version/platform,
+   including tester-confirmed label-to-schema mappings (see that skill's
+   "Draft Mapping" section) for every schema field used in this write matrix —
+   a Claude-authored draft mapping the tester has not yet reviewed does not
+   satisfy this criterion.
 2. Parser mappings and option dependencies are backed by in-game samples and focused tests.
 3. The game and launcher are fully closed and cloud sync is paused.
 4. The exact version and structural fingerprint match a `write_candidate: verified` or `write_verified: verified` rule.
