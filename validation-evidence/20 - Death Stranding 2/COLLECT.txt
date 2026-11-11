@@ -1,0 +1,22 @@
+Game: Death Stranding 2
+Platform: Steam
+Issue: TBD (open when repo access available; see draft below)
+Phase: Discover Config Path and establish Read
+
+中文指示
+1. 在 environment.txt 記錄精確 Steam Title、App ID、Version 與 Install Location；遮蔽 Username。
+2. 先透過 PCGamingWiki 等社群 Wiki 查詢已知設定檔位置/格式，再到實機核對是否相符。
+3. 在 01-read-evidence 放入 Authoritative Config、Game GUI 與 Game Tuner 對照（目前尚無 Parser，先記錄原始欄位）。
+4. 在 02-diagnostic-output 放入兩種 ZIP。
+5. 03-write-evidence 與 04-backup-restore 保持空白。
+
+English Instructions
+1. Record exact Steam title, App ID, version, and sanitized install location.
+2. Check PCGamingWiki (and similar community wikis) for the known config file location/format first, then verify against the real machine.
+3. Collect authoritative config, read comparisons, and both diagnostics in 01-read-evidence (no parser yet, so record raw fields for now).
+4. Provide both diagnostics.
+5. Wait for parser/writer development and rule support before Write.
+
+停止條件 / Stop Conditions
+- Config Format 未確認前禁止 Write。
+- Do not expose username or account details in evidence.
