@@ -1,0 +1,49 @@
+{
+  "id": "death-stranding-2",
+  "match": { "names": ["DEATH STRANDING 2: ON THE BEACH", "DEATH STRANDING 2 - ON THE BEACH"] },
+  "engine": "decima",
+  "files": {
+    "main": { "path": "HKEY_CURRENT_USER\\SOFTWARE\\KOJIMA PRODUCTIONS\\DEATH STRANDING 2 - ON THE BEACH\\", "codec": "registry" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "dynamic_resolution": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "registry_parse",
+  "parse_mode": "multi_file",
+  "_parser_fn_note": "READ-ONLY migration, by design - this profile intentionally has NO writer_fn. Discovery (validation-evidence/20 - Death Stranding 2/COLLECT.txt) initially concluded this title had NO readable graphics/video settings store at all: game_settings.cfg (plain text, real file confirmed via .9 test-machine) only contains ~100 gameplay/control fields (GameDifficulty, MouseSensitivity, AimAssist, ControllerVibrationStrength, ...) with zero overlap with GSAA's schema; the registry key HKCU\\SOFTWARE\\KOJIMA PRODUCTIONS\\DEATH STRANDING 2 - ON THE BEACH appeared (via a shallow Get-ItemProperty, no -Recurse) to have only 4 unrelated values (UserStoreLanguage/FirstRun/ShowLauncher/WrittenLanguage); profile.dat (binary, Steam Cloud save slot) was confirmed encrypted/compressed via ASCII string extraction (no readable fields); the .log file's '[**Display + Graphics Settings**]' block does contain the right fields but is a session-start echo only, not read back by the game, so it cannot back a parser_fn; and a full recursive search of the install directory (steaminput=Steam Input controller VDFs, tools=D3D12/shader compiler DLLs, uds=Steamworks stats/achievement cache uds00.ucp, LocalCacheWinGame=game asset packages) found no other plaintext candidate. This was corrected when a second, -Recurse pass over the same registry key revealed FOUR previously-missed one-level-deep sub-keys (Accessibility, Audio, Graphics, Input) - the earlier shallow read had simply never looked at sub-keys. The Graphics sub-key is the real, persistent settings store: confirmed on .9 test-machine (real hardware run, not synthetic) to contain FullscreenWidth/FullscreenHeight/WindowWidth/WindowHeight/Monitor/Fullscreen/ExclusiveFullscreen/VSync/DynamicResolutionTargetFPS/FrameGen/MaxGeneratedFrame/UpscaleMethod/UpscaleQuality/HDR* plus a texture/shadow/AO/etc quality bundle, and the values were observed changing across three consecutive in-game preset switches (H->V->H->M), proving they are a real read-back store, not a write-only echo. These field names are exactly the shape settings_parser._parse_registry_json already expects under a top-level 'Graphics' key (fw/fh from FullscreenWidth/FullscreenHeight, Fullscreen/ExclusiveFullscreen for screen_mode, VSync, DynamicResolutionTargetFPS for both frame_limit and dynamic_resolution, UpscaleMethod/UpscaleQuality, FrameGen) - the exact same generic registry-JSON shape already used for horizon-zero-dawn-remastered.json / shadow-of-the-tomb-raider.json - so this profile reuses the shared parser_fn 'registry_parse' (config_manager/profile_functions.py's _registry_parse wrapper around _parse_registry_json) verbatim, with zero new parser code. quick_preset is hard-coded to 'N/A' by _parse_registry_json for all registry-based titles (no single preset-name field exists in any of these registries, including this one - DS2's H/V/H/M in-game presets just bulk-set several quality keys at once rather than writing one discrete preset identifier). frame_limit is answered by the same DynamicResolutionTargetFPS field used for dynamic_resolution (an existing, deliberate overload in _parse_registry_json shared with HZD Remastered/SotTR) rather than a distinct FPS-cap field - no separate frame-cap registry value was found in the Graphics sub-key during discovery; this should be re-checked against a live in-game FPS-cap change during Stage 4 Live Read validation rather than assumed correct from static inspection alone. WHY NO writer_fn: identical reasoning to horizon-zero-dawn-remastered.json / shadow-of-the-tomb-raider.json - settings_writer.write_settings()'s profile-first write dispatch does an unguarded 'cfg[\"expanded_path\"]' bracket access that would KeyError against config_manager/config_exporter.py's _read_registry_key()-shaped production entries (no expanded_path key at all), and there is no registry-aware write path reachable from the profile-dispatch branch for this title. Whether a safe writer_fn can be added later (and whether writing live to this registry key is even effective without a game relaunch, since discovery's first instinct was that nothing persisted here) is explicitly left for a future round after Stage 4/5 live validation confirms read parity end-to-end.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "FullscreenWidth",
+      "FullscreenHeight",
+      "Fullscreen",
+      "ExclusiveFullscreen",
+      "VSync",
+      "DynamicResolutionTargetFPS",
+      "UpscaleMethod",
+      "UpscaleQuality",
+      "FrameGen"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No release-review rule file or published verified-games entry exists yet for this title - Stage 4 (Live Read validation) and Stage 5/6 (writer + persistence validation) have not been run. The registry field values documented in _parser_fn_note were observed directly on .9 test-machine across real in-game preset changes (not fixture/synthetic data), but that is discovery-stage evidence, not a completed per-setting validation pass - left empty rather than fabricated.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "Death Stranding 2: On the Beach is a single-player, story-driven PC port (Kojima Productions/PlayStation Studios) with no known PvP or competitive multiplayer component, and no anti-cheat vendor entry for this title exists anywhere in config_manager/anticheat.py's detection tables. Not independently re-verified against a real anti-cheat process scan (the .9 test-machine investigation this round focused on registry/file discovery and a screen-capture blocker believed to be DRM-related, not an anti-cheat process audit) - treat as provisional until a dedicated scan is done.",
+    "scope": []
+  },
+  "process_ignore": [],
+  "_process_ignore_note": "No title-specific process_ignore entries identified; left empty rather than guessed. Note: DS2.exe's own window was found during discovery to resist screen-capture (DXGI Desktop Duplication and PrintWindow both returned blank/false despite Windows reporting the window as visible/uncloaked) - suspected DRM-protected render path, unrelated to process_ignore and not investigated further per user instruction to defer that investigation."
+}
