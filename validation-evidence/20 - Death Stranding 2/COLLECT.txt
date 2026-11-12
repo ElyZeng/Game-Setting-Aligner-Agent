@@ -1,7 +1,9 @@
 Game: Death Stranding 2
 Platform: Steam
 Issue: TBD (open when repo access available; see draft below)
-Phase: Stage 4 - Live Read validation in progress (branch feature/death-stranding-2-support, commit 997aaf6, pushed to GitHub, PR not yet opened)
+Phase: Stage 4 - Live Read validation in progress, round 3 done (Display Settings tab located,
+DynamicResolutionTargetFPS semantics confirmed; Upscale Method PICO/DLSS mismatch still open)
+(branch feature/death-stranding-2-support, commit da4c6ad, pushed to GitHub, PR not yet opened)
 
 Stage 3 (Parser dev) - DONE
 - death-stranding-2.json profile added: parser_fn=registry_parse (parse_mode=multi_file, reuses the
@@ -35,6 +37,66 @@ Stage 4 (Live Read validation) - baseline round 1 DONE, per-field change/save/ex
   needs the user to manually change each setting in-game, save, fully exit, and verbally/textually
   confirm what they changed; Claude reads back via cli.py parse on .9 and compares - no OCR/VLM
   in-game UI check possible for this title.
+
+Stage 4 round 2 (2026-11-12) - launcher Settings page + in-game main menu, GDI screenshots + VLM
+- CORRECTION to the capture blocker above: GDI full-screen capture (CopyFromScreen) DOES work for the
+  launcher, the launcher Settings page, the loading screen and the in-game main menu (New Game /
+  DEATH STRANDING Recap / Options / ...). Only DXGI duplication / PrintWindow were blocked.
+- DS2 needs the Steam client running: with Steam closed, pressing Play crashed DS2 with
+  Assert(CClientPipe::BWriteAndReadResult: BWrite failed) (Steam\dumps\assert_ds2.exe_*.dmp).
+- Persistence check (user request): registry read via cli.py parse was IDENTICAL before launch and
+  after reaching the in-game main menu (all 9 fields unchanged) -> entering the game does not
+  rewrite these values. Raw Graphics sub-key snapshot: .9 C:\dev\vlm\ds2_reg_after_mainmenu.txt.
+- Launcher Settings page (VLM read) vs parser:
+  resolution 1920 x 1080 = 1920x1080 OK; VSync On = On OK; Frame Generation Off = Off OK;
+  Dynamic Resolution Scaling "60 FPS" vs dynamic_resolution "On (Target: 60 FPS)" OK-ish (UI shows a
+  target value, no separate On/Off seen);
+  Display Mode "Fullscreen" vs screen_mode "Borderless Fullscreen" (raw Fullscreen=1,
+  ExclusiveFullscreen=0) -> label MISMATCH, and "Borderless Fullscreen" is not in available_options;
+  Upscale Quality "Dynamic" vs upscaling_mode "Quality" (raw UpscaleQuality=3) -> likely enum MISMATCH;
+  Upscale Method: VLM repeatedly reads "PICO" vs upscaling "DLSS" (raw UpscaleMethod=1). .9 is an
+  Intel Arc B580, so DLSS cannot be the active upscaler -> the shared HZD/SotTR enum used by
+  _parse_registry_json is very likely wrong for DS2. Needs confirmation in the in-game Options menu.
+- frame_limit: no distinct FPS-cap value found in Graphics sub-key; still mapped from
+  DynamicResolutionTargetFPS (unverified).
+
+Stage 4 round 3 (2026-11-12) - in-game Options > Display Settings tab located; DynamicResolutionTargetFPS
+semantics CONFIRMED live
+- Root cause of round 2 not reaching the real Options menu: the in-game Options screen is a TABBED
+  page, not a flat list. Tabs (Game & System Settings / Controller Settings / Mouse & Keyboard
+  Settings / Display Settings) are cycled with keyboard E/Q (shoulder-button equivalents), not
+  arrow/WASD vertical navigation, and the tab bar renders as controller-button icon glyphs that plain
+  OCR does not read as text (misread as a stray "@" before the tab's own title) - this is why round 2
+  only ever saw the gameplay-only "Game & System Settings" tab. Reached Display Settings via E,E,E
+  from the first tab.
+- Display Settings tab fields read live (mouse hover+click to enter Options, then E to switch tabs,
+  OCR via WinRT OcrEngine for per-line text + bounding boxes): Monitor, Display Mode (Fullscreen),
+  Aspect Ratio (Auto), Display Resolution (1920 x 1080), HDR/Brightness Settings (sub-link),
+  Upscale Method, Upscale Quality, Sharpness, Dynamic Resolution Scaling (60 FPS), Refresh Rate
+  (144 Hz), VSync (On), Frame Generation (Off), Max Generated Frames, Latency Reduction.
+- CONFIRMED: RefreshRate=0x90(144) <-> "144 Hz" OK; VSync=1 <-> "On" OK; FrameGen=0 <-> "Off" OK.
+- RESOLVES the round 2 "frame_limit ... unverified" item: the row literally named "Dynamic Resolution
+  Scaling" shows "60 FPS" by default, exactly matching the live, unmodified DynamicResolutionTargetFPS
+  = 0x3c (60 decimal). Its own in-game tooltip reads verbatim: "Set a target framerate which the game
+  will aim to accomplish, automatically adjusting internal rendering resolution to achieve the best
+  visual quality while maintaining framerate." This confirms DynamicResolutionTargetFPS is scoped
+  specifically to Dynamic Resolution Scaling's target framerate, NOT a general/always-on FPS cap -
+  DS2 does not appear to expose a separate general frame-rate-limit control on this tab. Schema
+  implication: frame_limit should probably not silently reuse this field as if it were a plain
+  "FPS cap" (the dynamic_resolution schema key is the correct/sole consumer); needs a decision in
+  Stage 3 profile/mapping docs rather than assuming the current dual-mapping is correct as-is.
+- Partial write-side test (not completed): cycled the Dynamic Resolution Scaling value from 60 FPS to
+  72 FPS in the UI via the D key (A/D change a focused row's enum/slider value; W/S move the row
+  cursor; this confirms the control scheme is WASD, not arrows, matching round 1's finding that DOWN
+  did nothing on the main menu). Could NOT find a way to trigger the page's "Apply" button
+  programmatically - synthetic mouse click at its exact on-screen coordinate (confirmed 1:1 client
+  mapping), ENTER, and SPACE (while a list row had focus) all left the UI showing the unapplied
+  "72 FPS" and the registry unchanged at 0x3c. Backed out without committing; no bad state left
+  behind. Full change->Apply->read round trip for this field is still open for a future session (not
+  required to resolve the semantics question above, which was answered via the tooltip text + exact
+  default-value match instead).
+- upscaling "PICO" vs "DLSS" mismatch from round 2 is still open/not re-checked this round (did not
+  revisit Upscale Method row specifically).
 
 中文指示
 1. 在 environment.txt 記錄精確 Steam Title、App ID、Version 與 Install Location；遮蔽 Username。
