@@ -415,10 +415,36 @@ def setting_options_for_game(
         if key == UPSCALING_MODE:
             return ["—", "Ultra Quality", "Quality", "Balanced", "Performance"] if upscaling_method == "FSR" else ["—"]
     if "horizon zero dawn" in name or "shadow of the tomb raider" in name:
+        if key == SCREEN_MODE:
+            # _parse_registry_json can emit "Borderless Fullscreen" /
+            # "Exclusive Fullscreen" for these two titles (Fullscreen=1, by
+            # ExclusiveFullscreen 0/1) but the generic SETTING_OPTIONS list
+            # above only has "Fullscreen"/"Borderless Windowed"/"Windowed" -
+            # a read value could be missing from its own dropdown. Added here
+            # rather than changing the generic list so unrelated games aren't
+            # offered options they can't actually produce.
+            return ["—", "Fullscreen", "Borderless Windowed", "Borderless Fullscreen", "Windowed", "Exclusive Fullscreen"]
         if key == UPSCALING:
             return ["—", "Off", "DLSS", "FSR", "CAS", "XeSS"]
         if key == UPSCALING_MODE:
             return ["—", "Ultra Performance", "Performance", "Balanced", "Quality", "Ultra Quality"] if upscaling_method not in {None, "Off"} else ["—"]
+    if "death stranding 2" in name:
+        if key == SCREEN_MODE:
+            # DS2-specific: _parse_registry_json's is_ds2 override emits
+            # "Fullscreen" (not "Borderless Fullscreen") for Fullscreen=1/
+            # ExclusiveFullscreen=0, live-confirmed against the in-game
+            # Display Settings tab (COLLECT.txt round 2). "Exclusive
+            # Fullscreen" is kept as an option too even though that raw state
+            # was never live-confirmed for this title.
+            return ["—", "Fullscreen", "Borderless Windowed", "Windowed", "Exclusive Fullscreen"]
+        if key == UPSCALING:
+            # Only "PICO" (UpscaleMethod=1) has been live-confirmed so far;
+            # DS2's other real options per PCGamingWiki are DLSS4/FSR4/
+            # FSR3.1/XeSS2 but their raw enum indices are not yet known -
+            # deliberately not guessed here (see _parse_registry_json).
+            return ["—", "PICO"]
+        if key == UPSCALING_MODE:
+            return ["—", "Dynamic"] if upscaling_method == "PICO" else ["—"]
     if "f1" in name and "25" in name:
         if key == UPSCALING_MODE:
             modes = {
@@ -1236,6 +1262,22 @@ def _parse_registry_json(content: str, game_hint: str = "") -> Dict[str, Optiona
 
     gfx = data.get("Graphics", data)
 
+    # Death Stranding 2 shares this generic registry-JSON shape with Horizon
+    # Zero Dawn Remastered / Shadow of the Tomb Raider (same field names), but
+    # live in-game validation (validation-evidence/20 - Death Stranding 2/
+    # COLLECT.txt, round 2/3, 2026-11-12) found two of the values below this
+    # generic path assumes are WRONG for this title specifically: the
+    # Fullscreen=1/ExclusiveFullscreen=0 screen-mode label, and the
+    # UpscaleMethod/UpscaleQuality enum (confirmed via VLM/OCR against the
+    # real in-game Display Settings tab on an Intel Arc GPU test machine,
+    # where "DLSS" cannot possibly be the true active upscaler). HZD/SotTR's
+    # own COLLECT.txt logs never actually live-validated these same fields
+    # (grepped for "Upscal|PICO|DLSS|FSR|CAS|XeSS", zero matches in either),
+    # so rather than risk silently changing still-unverified-but-working
+    # behavior for those two titles, this is a narrowly scoped override keyed
+    # on game_hint, not a change to the shared defaults below.
+    is_ds2 = "death stranding" in game_hint
+
     # Resolution
     fw = gfx.get("FullscreenWidth", gfx.get("WindowWidth"))
     fh = gfx.get("FullscreenHeight", gfx.get("WindowHeight"))
@@ -1247,7 +1289,16 @@ def _parse_registry_json(content: str, game_hint: str = "") -> Dict[str, Optiona
     efs = gfx.get("ExclusiveFullscreen")
     if fs is not None:
         if fs == 1:
-            r[SCREEN_MODE] = "Exclusive Fullscreen" if efs == 1 else "Borderless Fullscreen"
+            if is_ds2:
+                # Live-confirmed (COLLECT.txt round 2): DS2's own Display
+                # Settings tab shows "Fullscreen" for this exact raw state,
+                # not "Borderless Fullscreen". The ExclusiveFullscreen=1 case
+                # was never live-confirmed for DS2; kept as "Exclusive
+                # Fullscreen" (same distinguishing logic as the shared path)
+                # as the least-assumption fallback rather than guessed further.
+                r[SCREEN_MODE] = "Exclusive Fullscreen" if efs == 1 else "Fullscreen"
+            else:
+                r[SCREEN_MODE] = "Exclusive Fullscreen" if efs == 1 else "Borderless Fullscreen"
         else:
             r[SCREEN_MODE] = "Windowed"
 
@@ -1280,10 +1331,24 @@ def _parse_registry_json(content: str, game_hint: str = "") -> Dict[str, Optiona
     xess = gfx.get("XESS")
     cas = gfx.get("CAS")
     if um is not None:
-        method_map = {0: "Off", 1: "DLSS", 2: "FSR", 3: "CAS", 4: "XeSS"}
-        quality_map = {0: "Ultra Performance", 1: "Performance", 2: "Balanced", 3: "Quality", 4: "Ultra Quality"}
+        if is_ds2:
+            # DS2's real option set per PCGamingWiki is DLSS4/FSR4/FSR3.1/
+            # XeSS2/PICO - NOT the generic HZD/SotTR DLSS/FSR/CAS/XeSS set.
+            # Only UpscaleMethod=1 has actually been live-confirmed (reads as
+            # "PICO" in the in-game Display Settings tab, round 2, 2026-11-12);
+            # the other raw values have not been observed in-game yet, so they
+            # are deliberately left unmapped (falls through to "Method N")
+            # rather than guessing an ordering from the wiki's alphabetical
+            # listing. Same precaution for UpscaleQuality: only raw=3 has been
+            # confirmed (shows "Dynamic" on the Dynamic Resolution Scaling-
+            # adjacent Upscale Quality row), others unmapped.
+            method_map = {1: "PICO"}
+            quality_map = {3: "Dynamic"}
+        else:
+            method_map = {0: "Off", 1: "DLSS", 2: "FSR", 3: "CAS", 4: "XeSS"}
+            quality_map = {0: "Ultra Performance", 1: "Performance", 2: "Balanced", 3: "Quality", 4: "Ultra Quality"}
         m = method_map.get(um, f"Method {um}")
-        q = quality_map.get(uq, "") if uq is not None else ""
+        q = quality_map.get(uq, f"Mode {uq}" if uq is not None else "") if uq is not None else ""
         r[UPSCALING] = m
         r[UPSCALING_MODE] = q if m != "Off" and q else "N/A"
     elif dlss is not None or xess is not None:
