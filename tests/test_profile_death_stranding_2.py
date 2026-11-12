@@ -13,11 +13,19 @@ These tests mirror tests/test_profile_registry_games.py's structure for the
 two existing registry-based titles (Horizon Zero Dawn (TM) Remastered,
 Shadow of the Tomb Raider) and prove the same three things for this title:
 
-1. The read side (extract_key_settings) goes through the shared
-   _registry_parse parser_fn (parse_mode="multi_file") and produces results
-   identical to calling the legacy _parse_registry_json directly - this
-   profile adds zero new parser code, it only reuses the existing generic
-   registry-JSON parser.
+1. The read side (extract_key_settings) goes through this title's own
+   _death_stranding_2_registry_parse parser_fn (parse_mode="multi_file"),
+   which is _parse_registry_json's existing generic registry-JSON parser
+   called with game_hint="death stranding 2" - no new parsing logic, just a
+   per-game override of two values this generic path got wrong for THIS
+   title (screen_mode and UpscaleMethod/UpscaleQuality), live-confirmed via
+   VLM/OCR against the real in-game Display Settings tab
+   (validation-evidence/20 - Death Stranding 2/COLLECT.txt round 2/3,
+   2026-11-12). Calling _parse_registry_json directly without that
+   game_hint (as HZD/SotTR's shared _registry_parse wrapper still does)
+   reproduces the old, pre-fix generic values - that's intentional, not a
+   discrepancy, since HZD/SotTR's own COLLECT.txt logs never actually
+   live-validated these same fields and so are deliberately left untouched.
 
 2. Profile.matches() is exact, so a hypothetical differently-punctuated or
    related title string does not get silently routed through this profile.
@@ -84,14 +92,14 @@ class TestReadParity:
         files = _ds2_files_production_shape(content)
 
         via_profile = extract_key_settings(GAME, files)
-        via_legacy = _parse_registry_json(content)
+        via_legacy = _parse_registry_json(content, game_hint="death stranding 2")
 
         assert via_profile == via_legacy
         assert via_profile["resolution"] == "1920x1080"
-        assert via_profile["screen_mode"] == "Borderless Fullscreen"
+        assert via_profile["screen_mode"] == "Fullscreen"
         assert via_profile["vsync"] == "On"
-        assert via_profile["upscaling"] == "DLSS"
-        assert via_profile["upscaling_mode"] == "Quality"
+        assert via_profile["upscaling"] == "PICO"
+        assert via_profile["upscaling_mode"] == "Dynamic"
         assert via_profile["frame_generation"] == "Off"
         # quick_preset: no discrete preset-name field exists anywhere in this
         # title's registry (confirmed during discovery - presets just bulk-set
@@ -104,7 +112,7 @@ class TestReadParity:
         files = _ds2_files_production_shape(content)
 
         via_profile = extract_key_settings(GAME, files)
-        via_legacy = _parse_registry_json(content)
+        via_legacy = _parse_registry_json(content, game_hint="death stranding 2")
 
         assert via_profile == via_legacy
         assert via_profile["screen_mode"] == "Exclusive Fullscreen"
@@ -115,7 +123,7 @@ class TestReadParity:
         files = _ds2_files_production_shape(content)
 
         via_profile = extract_key_settings(GAME, files)
-        via_legacy = _parse_registry_json(content)
+        via_legacy = _parse_registry_json(content, game_hint="death stranding 2")
 
         assert via_profile == via_legacy
         assert via_profile["screen_mode"] == "Windowed"
@@ -150,15 +158,37 @@ class TestReadParity:
         files = _ds2_files_production_shape(content)
 
         via_profile = extract_key_settings(GAME, files)
-        via_legacy = _parse_registry_json(content)
+        via_legacy = _parse_registry_json(content, game_hint="death stranding 2")
 
         assert via_profile == via_legacy
         assert via_profile["resolution"] == "1920x1080"
-        assert via_profile["screen_mode"] == "Borderless Fullscreen"
+        assert via_profile["screen_mode"] == "Fullscreen"
         assert via_profile["vsync"] == "On"
         assert via_profile["dynamic_resolution"] == "On (Target: 60 FPS)"
-        assert via_profile["upscaling"] == "DLSS"
-        assert via_profile["upscaling_mode"] == "Quality"
+        assert via_profile["upscaling"] == "PICO"
+        assert via_profile["upscaling_mode"] == "Dynamic"
+
+    def test_without_game_hint_reproduces_old_generic_values(self):
+        """Documents the intentional divergence: calling the shared generic
+        parser with no game_hint (what HZD/SotTR's _registry_parse wrapper
+        still does) reproduces the old, now-known-wrong-for-DS2 values. This
+        is not a bug in the generic path for HZD/SotTR - it's just evidence
+        that the DS2 profile's own dedicated parser_fn (which does pass
+        game_hint) is what actually fixes this title."""
+        content = _ds2_registry_content()
+
+        generic = _parse_registry_json(content)
+
+        assert generic["screen_mode"] == "Borderless Fullscreen"
+        assert generic["upscaling"] == "DLSS"
+        assert generic["upscaling_mode"] == "Quality"
+
+    def test_profile_uses_its_own_parser_fn_not_the_shared_one(self):
+        from config_manager import profile_dispatch
+
+        profile = profile_dispatch.find_profile(GAME)
+        assert profile is not None
+        assert profile.parser_fn == "death_stranding_2_registry_parse"
 
     def test_exact_match_only_no_substring_collision(self):
         from config_manager import profile_dispatch

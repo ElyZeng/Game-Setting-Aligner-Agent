@@ -164,21 +164,44 @@ def _registry_parse(config_files: Any) -> Dict[str, Optional[str]]:
     _cs2_parse's established pattern - extract_key_settings()'s filename-based
     _content_for() helper has no registry-path-shaped candidate to match
     against, so this bypasses it entirely, same as CS2 does for its split
-    files. _parse_registry_json's ``game_hint`` parameter is accepted but
-    never branched on anywhere in its body (confirmed by reading it in full),
-    so this single wrapper is correct for both titles rather than two
-    near-duplicate ones. Read-only: no writer wrapper exists on purpose - see
+    files. Read-only: no writer wrapper exists on purpose - see
     horizon-zero-dawn-remastered.json / shadow-of-the-tomb-raider.json's
     _parser_fn_note for the full rationale (an unguarded ``cfg["expanded_path"]``
     bracket access in settings_writer.write_settings()'s profile-first write
     dispatch would KeyError against config_exporter._read_registry_key()-shaped
     production entries, which never set expanded_path at all).
+
+    NOTE: does not pass a ``game_hint`` into _parse_registry_json (stays "",
+    i.e. the shared/generic enum mappings) - see _death_stranding_2_registry_parse
+    below for why Death Stranding 2 needs its own wrapper instead of reusing
+    this one.
     """
     from .settings_parser import _empty_result, _parse_registry_json
 
     for cfg in config_files:
         if cfg.get("type") == "registry" and cfg.get("content"):
             return _parse_registry_json(cfg["content"])
+    return _empty_result()
+
+
+def _death_stranding_2_registry_parse(config_files: Any) -> Dict[str, Optional[str]]:
+    """Death Stranding 2's own multi_file parser_fn - same registry-JSON shape
+    and dispatch logic as _registry_parse above, but passes
+    ``game_hint="death stranding 2"`` into _parse_registry_json so its
+    DS2-specific screen_mode/UpscaleMethod/UpscaleQuality overrides kick in
+    (see _parse_registry_json's is_ds2 branch and validation-evidence/
+    20 - Death Stranding 2/COLLECT.txt round 2/3 for the live in-game evidence
+    that the shared HZD/SotTR enum mislabels this title's values). Kept as a
+    separate function/registry id from _registry_parse rather than adding a
+    game_hint parameter to the shared one, so HZD/SotTR's behavior (never
+    live-validated for these same fields, per their own COLLECT.txt logs, so
+    deliberately left untouched) cannot be affected by this change at all.
+    """
+    from .settings_parser import _empty_result, _parse_registry_json
+
+    for cfg in config_files:
+        if cfg.get("type") == "registry" and cfg.get("content"):
+            return _parse_registry_json(cfg["content"], game_hint="death stranding 2")
     return _empty_result()
 
 
@@ -200,6 +223,7 @@ def register_all() -> None:
     _registry.register("parser_fn", "expedition_33_parse", _expedition_33_parse)
     _registry.register("parser_fn", "sf6_parse", _sf6_parse)
     _registry.register("parser_fn", "registry_parse", _registry_parse)
+    _registry.register("parser_fn", "death_stranding_2_registry_parse", _death_stranding_2_registry_parse)
 
 
 register_all()
