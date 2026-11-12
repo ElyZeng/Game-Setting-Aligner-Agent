@@ -1,0 +1,50 @@
+{
+  "id": "cyberpunk-2077",
+  "match": { "names": ["Cyberpunk 2077"] },
+  "engine": "redengine4",
+  "files": {
+    "main": { "path": "UserSettings.json", "codec": "raw_text" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "dynamic_resolution": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "cyberpunk_parse",
+  "writer_fn": "cyberpunk_write",
+  "write_detail": "Cyberpunk settings written",
+  "parse_mode": "single_file",
+  "_parser_fn_note": "parser_fn/writer_fn wrap settings_parser._parse_cyberpunk / settings_writer._write_cyberpunk verbatim (config_manager/profile_functions.py) - zero-behavior-change. UserSettings.json stores settings as a flat list of {group_name, options:[{name,value,index,...}]} groups, looked up by bare option name (with a group_name prefix only to disambiguate, e.g. ResolutionScaling under /graphics/presets) - this is JSON, and no 'json' codec exists in config_manager/codecs/, so files.main.codec is declared 'raw_text' as a structural placeholder (same precedent as CS2 declaring 'valve_kv' and Black Myth declaring 'unreal_ini' while the real parsing lives entirely in the wrapped legacy function). quick_preset write also rewrites ~32 member settings per preset (CYBERPUNK_PRESET_MEMBERS) so the game doesn't silently reset QuickPresets back to 'Custom' - far too interdependent to decompose into per-field settings this pass, same rationale as Black Myth/CS2/Forza. dynamic_resolution and frame_generation are parsed/displayed but deliberately NOT write-candidates (settings_parser.is_setting_writable_for_game excludes both for Cyberpunk, matching release-assets/forza-write-candidate-rules.json's supported_settings list for this title) - write_settings() will accept them if set_settings sends them (the wrapped _write_cyberpunk function does implement both), but the GUI does not offer Apply controls for them; this profile does not re-implement that exclusion since it lives in GUI-facing setting_options_for_game/is_setting_writable_for_game, out of scope for the parser_fn/writer_fn dispatch path. One deliberate, documented behavior tightening versus the legacy dispatch: write_settings()'s pre-P1 'cyberpunk' branch picks the target file via a path SUBSTRING match ('UserSettings' in path), while the profile-first write dispatch (settings_writer.py) matches the main file by exact basename ('usersettings.json'). This profile does not attempt to preserve the looser substring behavior - an exact basename match is strictly safer and consistent with every other migrated profile's main-file selection.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "Resolution",
+      "WindowMode",
+      "VSync",
+      "MaximumFPS_OnOff",
+      "MaximumFPS_Value",
+      "ResolutionScaling",
+      "QuickPresets",
+      "FrameGeneration"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "release-assets/forza-write-candidate-rules.json DOES contain a real write_candidate rule for Cyberpunk 2077 (version 2.31, fingerprint de78972e..., supported_settings: resolution/screen_mode/vsync/frame_limit/upscaling/upscaling_mode/quick_preset) but that is config_manager/verification.py's own separate rule-file mechanism, independent of this profile's verified[] field - left empty here rather than duplicating/fabricating data this profile doesn't own. validation-evidence/01 - Cyberpunk 2077/COLLECT.txt is only a collection checklist in this checkout, not completed per-setting evidence.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "No anti-cheat vendor markers found in config_manager/anticheat.py's detection tables for Cyberpunk 2077 (EasyAntiCheat/BattlEye/EA Javelin/nProtect GameGuard/XIGNCODE3/Anti-Cheat Expert/PunkBuster/mhyprot - none apply), and no validation-evidence/ or validation/workstation.json scan result records any anti-cheat component for this title in this checkout. Cyberpunk 2077 is single-player/no-PvP and does not ship a known third-party kernel anti-cheat; not independently re-verified against a real install.",
+    "scope": []
+  },
+  "process_ignore": [],
+  "_process_ignore_note": "No Cyberpunk-specific process_ignore entries identified in the legacy code or existing tests; left empty rather than guessed."
+}

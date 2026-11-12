@@ -1,0 +1,50 @@
+{
+  "id": "shadow-of-the-tomb-raider",
+  "match": { "names": ["Shadow of the Tomb Raider"] },
+  "engine": "foundation",
+  "files": {
+    "main": { "path": "HKEY_CURRENT_USER\\Software\\Eidos Montreal\\Shadow of the Tomb Raider\\", "codec": "registry" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "dynamic_resolution": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "registry_parse",
+  "parse_mode": "multi_file",
+  "_parser_fn_note": "READ-ONLY migration, by design - this profile intentionally has NO writer_fn. See horizon-zero-dawn-remastered.json's _parser_fn_note for the full rationale (shared with this title): parser_fn is the same shared _registry_parse(config_files) wrapper in config_manager/profile_functions.py around settings_parser._parse_registry_json, using parse_mode='multi_file' (the CS2 mechanism) so the wrapper filters the full config_files list for the type=='registry' entry itself. Unlike Horizon Zero Dawn Remastered, this title's registry key IS populated on the only workstation evidence in this checkout (validation/workstation.json: found=true, a real Graphics/Input/Eyetracking JSON blob), so this profile's read parity can be verified against real exported data, not just an empty-result placeholder. A separate 'Shadow of the Tomb Raider Trial' entry also exists in workstation.json with an empty config_files list - it is NOT registry-based (and likely not even installed as more than a store placeholder) and is deliberately excluded from this profile's match list, mirroring how Forza Horizon 5 / Black Myth Benchmark Tool / other trial-or-variant titles were excluded from their respective retail profiles; Profile.matches() is an exact (case-insensitive) title match so the two can never collide regardless. WHY NO writer_fn: identical reasoning to horizon-zero-dawn-remastered.json - settings_writer.write_settings()'s profile-first write dispatch does an unguarded 'cfg[\"expanded_path\"]' bracket access that would KeyError against config_manager/config_exporter.py's _read_registry_key()-shaped production entries (no expanded_path key at all), and even past that there is no registry-aware write path reachable from the profile-dispatch branch (only config_manager/registry_io.py has one, and only the OLD, UNMODIFIED legacy 'registry_json' write branch plus verification.backup_and_write() use it). This title is in fact the one already exercised by tests/test_write_safety.py's S7 registry tests (test_registry_write_changes_only_target_value_and_keeps_type / test_registry_failed_validation_restores_snapshot / test_registry_pristine_restore all use game name 'Shadow of the Tomb Raider' via registry_io.read_key_as_json-shaped fixtures, which DO include expanded_path) - confirmed those tests still pass unchanged after this profile is added, precisely because omitting writer_fn means write_settings()'s profile-first branch's 'profile.writer_fn' check is False and control falls straight through to the same legacy '_detect_parser_type()->registry_json' path those tests already exercise, byte-for-byte identical to before this profile existed. Building a real writer_fn (fixing the KeyError, wiring registry_io into the profile-dispatch write branch, and adding a production-shaped - no expanded_path - test fixture per the test-coverage gap noted in horizon-zero-dawn-remastered.json) is explicitly scoped as a future follow-up for both registry titles together, not part of this read-only round. The same independent verification.py rollback-gap finding noted in horizon-zero-dawn-remastered.json also applies here and is likewise out of scope for this round.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "Fullscreen",
+      "ExclusiveFullscreen",
+      "FullscreenWidth",
+      "FullscreenHeight",
+      "VSync",
+      "RefreshRate",
+      "ResolutionModifier",
+      "DLSS",
+      "XESS",
+      "CAS"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No local runner/rules verified-games rule file or .9 run evidence exists in this checkout for Shadow of the Tomb Raider - left empty rather than fabricated, despite real registry content being available in validation/workstation.json.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "No anti-cheat vendor entry for this title exists in config_manager/anticheat.py's detection tables, and no validation-evidence/ entry exists for it in this checkout - not independently re-verified against a real install. Shadow of the Tomb Raider has a single-player campaign and historically no competitive multiplayer component, which makes an undetected anti-cheat less likely to be the cause, but this is not a substitute for a real scan.",
+    "scope": []
+  },
+  "process_ignore": [],
+  "_process_ignore_note": "No title-specific process_ignore entries identified in the legacy code or existing tests; left empty rather than guessed."
+}

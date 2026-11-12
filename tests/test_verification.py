@@ -1456,7 +1456,17 @@ def test_remote_rule_overrides_builtin_rule(tmp_path):
     assert registry.status_for("Counter-Strike 2", "Steam", "unknown", "anything")["status"] == "deprecated"
 
 
-def test_exact_platform_fingerprint_mismatch_is_not_reported_as_version_mismatch(tmp_path):
+def test_exact_platform_fingerprint_mismatch_is_not_reported_as_version_mismatch(tmp_path, monkeypatch):
+    # Isolate from the real Black Myth: Wukong profile (which now also
+    # matches this exact version string) so this test exercises the legacy
+    # rule-file fingerprint-mismatch path specifically, not profile-first
+    # dispatch -- see test_real_black_myth_profile_upgrades_builtin_read_verified_baseline
+    # for the profile-path equivalent.
+    from config_manager import verification as verification_module
+    monkeypatch.setattr(
+        verification_module.profile_dispatch, "find_profile", lambda name: None
+    )
+
     registry = VerificationRegistry("0.08.8", data_dir=tmp_path)
     registry.current_path.write_text(json.dumps({
         "format_version": 1,
@@ -1573,3 +1583,248 @@ def test_write_candidate_allows_guarded_test_write(tmp_path):
 
     assert result == []
     assert called == [True]
+
+
+# --- P1 handoff §4.3: profile-first status_for, rule-file fallback -------
+
+def _synthetic_profile(levels, *, platform="Steam", version="1.0", fingerprint=None,
+                        version_policy="exact", anticheat=None):
+    from config_manager.profiles.loader import Profile, VerifiedEntry
+
+    return Profile(
+        id="synthetic-test-game",
+        match_names=["Synthetic Test Game"],
+        match_steam_appid=None,
+        engine=None,
+        files={},
+        verified=[VerifiedEntry(platform=platform, version=version, levels=levels, fingerprint=fingerprint)],
+        version_policy=version_policy,
+        anticheat=anticheat if anticheat is not None else {"review": "n/a", "detected": [], "scope": []},
+    )
+
+
+def test_profile_status_uses_worst_per_setting_level(tmp_path, monkeypatch):
+    from config_manager import verification as verification_module
+
+    profile = _synthetic_profile({"resolution": "L3", "frame_limit": "L2", "vsync": "L3"})
+    monkeypatch.setattr(
+        verification_module.profile_dispatch, "find_profile",
+        lambda name: profile if name == "Synthetic Test Game" else None,
+    )
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+
+    result = registry.status_for("Synthetic Test Game", "Steam", "1.0", "anything")
+
+    assert result["status"] == "write_candidate"  # worst level (L2) wins, not best (L3)
+    assert result["reason"] == "verified"
+    assert result["rule"]["supported_settings"] == ["frame_limit", "resolution", "vsync"]
+    assert result["rule"]["anticheat"] == {"review": "n/a", "detected": [], "scope": []}
+
+
+def test_profile_version_mismatch_falls_back_to_legacy_rule_not_a_profile_guess(tmp_path, monkeypatch):
+    """A profile with no entry for the requested version must not invent a
+    "version_mismatch" downgrade itself — the legacy rule file (if any) is
+    the only thing allowed to answer for a version the profile never saw."""
+    from config_manager import verification as verification_module
+
+    profile = _synthetic_profile({"resolution": "L3"}, version="1.0")
+    monkeypatch.setattr(
+        verification_module.profile_dispatch, "find_profile",
+        lambda name: profile if name == "Synthetic Test Game" else None,
+    )
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+    registry.current_path.write_text(json.dumps({
+        "format_version": 1,
+        "manifest_version": "test",
+        "minimum_client_version": "0.05.1",
+        "games": [{
+            "game": "Synthetic Test Game", "platform": "Steam", "version": "2.0",
+            "fingerprint": "*", "status": "write_verified", "config_patterns": [],
+            "supported_settings": [], "reader_id": "existing-parser", "writer_id": "existing-writer",
+        }],
+    }), encoding="utf-8")
+
+    result = registry.status_for("Synthetic Test Game", "Steam", "2.0", "anything")
+
+    assert result["status"] == "write_verified"
+    assert result["reason"] == "verified"
+    assert result["rule"]["version"] == "2.0"  # came from the rule file, not the profile
+
+
+def test_profile_platform_mismatch_falls_back_to_legacy(tmp_path, monkeypatch):
+    from config_manager import verification as verification_module
+
+    profile = _synthetic_profile({"resolution": "L3"}, platform="Steam")
+    monkeypatch.setattr(
+        verification_module.profile_dispatch, "find_profile",
+        lambda name: profile if name == "Synthetic Test Game" else None,
+    )
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+
+    result = registry.status_for("Synthetic Test Game", "Epic", "1.0", "anything")
+
+    assert result["reason"] == "game_not_listed"
+
+
+def test_real_black_myth_profile_upgrades_builtin_read_verified_baseline(tmp_path):
+    """Confirms §4.3's whole point with the one real profile that already
+    has non-empty verified[] data: before this change, Black Myth: Wukong
+    could only ever report the generic builtin "read_verified" baseline
+    (platform "*", version "unknown") since no real verified-games rule file
+    entry exists for it — meaning backup_and_write's _check_write_rule gate
+    always refused writes. The profile's real .9-runner-derived verified[]
+    entry now lets a matching platform/version report write_candidate
+    (worst level across its 9 settings is L2) instead."""
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+
+    result = registry.status_for("Black Myth: Wukong", "Steam", "Steam build 21393610", "anything")
+
+    assert result["status"] == "write_candidate"
+    assert result["reason"] == "verified"
+    assert result["rule"]["anticheat"]["review"] == "n/a"
+    assert "frame_limit" in result["rule"]["supported_settings"]
+
+    # An unmatched version still falls back to the untouched legacy path —
+    # the generic builtin baseline, exactly as before this migration.
+    legacy = registry.status_for("Black Myth: Wukong", "Steam", "some-other-version", "anything")
+    assert legacy["status"] == "read_verified"
+    assert legacy["reason"] == "version_mismatch"
+
+
+def test_profile_anticheat_dict_flows_through_apply_anticheat_policy_unchanged(tmp_path):
+    """apply_anticheat_policy() and ensure_anticheat_reviewed() needed zero
+    code changes for §4.3: they already consume whatever "rule" dict
+    status_for() hands them generically, and a profile's anticheat field
+    shape (review/detected/scope) is identical to a legacy rule's."""
+    from config_manager.verification import apply_anticheat_policy
+
+    registry = VerificationRegistry("0.05.1", data_dir=tmp_path)
+    verification = registry.status_for("Black Myth: Wukong", "Steam", "Steam build 21393610", "anything")
+    assert verification["status"] == "write_candidate"
+
+    downgraded = apply_anticheat_policy(verification, "C:/x", detector=lambda _p: ["BattlEye"])
+
+    assert downgraded["status"] == "read_verified"
+    assert downgraded["reason"].startswith("anticheat_not_reviewed")
+
+
+# --- Forza Horizon 6 / F1 25 profile migration (writer_id/supported_values) -
+
+def test_real_forza_profile_status_for_synthesizes_writer_id_and_supported_values(tmp_path):
+    """Confirms the landmine fix end to end at the status_for() layer: before
+    writer_id/supported_values were added to the Profile schema, populating
+    Forza's verified[] would have short-circuited status_for() away from the
+    legacy rule file (which used to carry these two fields) without putting
+    them anywhere else, permanently breaking the quick_preset write gate in
+    _check_write_rule (see that function's Forza-specific block). The real,
+    checked-in forza-horizon-6.json profile must now report both fields."""
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path)
+
+    result = registry.status_for(
+        "Forza Horizon 6", "Steam", "6.440.853.0",
+        "75102cb3dd1640ce99dc0dc4b47ea5104a58841de98152b3992974e7147bded5",
+    )
+
+    assert result["status"] == "write_candidate"
+    assert result["reason"] == "verified"
+    rule = result["rule"]
+    assert rule["writer_id"] == "forza-xml-writer"
+    assert rule["supported_values"] == {
+        "quick_preset": ["Very Low", "Low", "Medium", "High", "Ultra", "Extreme"],
+    }
+    assert "quick_preset" in rule["supported_settings"]
+
+    # A version/fingerprint that doesn't match the profile's verified[] entry
+    # must not pick up writer_id/supported_values from thin air.
+    mismatched = registry.status_for("Forza Horizon 6", "Steam", "1.0", "other-fingerprint")
+    assert mismatched["status"] != "write_candidate" or mismatched.get("reason") != "verified"
+
+
+def test_real_forza_profile_rule_satisfies_quick_preset_write_gate(tmp_path, monkeypatch):
+    """The actual payoff: feed the REAL rule dict produced by the real
+    checked-in profile (not a hand-written test double) through
+    backup_and_write/preflight_write's Forza-specific quick_preset gate in
+    _check_write_rule, and confirm the write now succeeds via profile-first
+    dispatch — this is the exact write path that would have silently broken
+    without the writer_id/supported_values schema extension."""
+    from config_manager.settings_parser import FORZA_PRESET_SIGNATURES
+    from config_manager.settings_writer import FORZA_PRESET_V52_FIELDS
+
+    game = "Forza Horizon 6"
+    probe_registry = VerificationRegistry("0.08.18", data_dir=tmp_path / "probe")
+    real_rule = probe_registry.status_for(
+        game, "Steam", "6.440.853.0",
+        "75102cb3dd1640ce99dc0dc4b47ea5104a58841de98152b3992974e7147bded5",
+    )["rule"]
+    assert real_rule["writer_id"] == "forza-xml-writer"  # sanity: didn't silently fall back to {}
+
+    config_path = (
+        tmp_path / "ForzaHorizon6" / "LocalStorage_Shared" / "ForzaUserConfigSelections" / "UserConfigSelections"
+    )
+    config_path.parent.mkdir(parents=True)
+    sidecar = config_path.parents[2] / "fullscreen_choice"
+    sidecar.write_bytes(b"\x01")
+    root = ET.Element("UserConfig", Version="52")
+    selections = ET.SubElement(root, "selections")
+    for option_id, value in FORZA_PRESET_SIGNATURES["Ultra"].items():
+        ET.SubElement(selections, "option", id=option_id, value=value)
+    fields = {}
+    for (tag, attr), values in FORZA_PRESET_V52_FIELDS.items():
+        fields.setdefault(tag, {})[attr] = values[3]
+    for tag, attributes in fields.items():
+        ET.SubElement(root, tag, attributes)
+    original = ET.tostring(root, encoding="unicode")
+    config_path.write_text(original, encoding="utf-8")
+    config_files = [{"expanded_path": str(config_path), "found": True, "content": original}]
+
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path / "rules")
+    registry.enable_test_writes()
+    monkeypatch.setattr(
+        VerificationRegistry, "status_for",
+        lambda *_args: {"status": "write_candidate", "reason": "verified", "rule": real_rule},
+    )
+    # backup_and_write/preflight_write recompute the structural fingerprint
+    # from config_files themselves (status_for's own fingerprint argument is
+    # irrelevant to this check) — stand in for "this is the real machine
+    # whose install matches the profile's recorded fingerprint exactly".
+    monkeypatch.setattr(
+        "config_manager.verification.game_structural_fingerprint",
+        lambda *_args, **_kwargs: real_rule["fingerprint"],
+    )
+
+    writes = []
+    results = backup_and_write(
+        game, "Steam", "6.440.853.0", config_files, {"quick_preset": "Ultra"},
+        lambda *_args: writes.append(True) or [{"path": str(config_path), "status": "ok"}], registry,
+    )
+
+    assert writes == [True]
+    assert results[0]["status"] == "ok"
+
+
+def test_real_f1_25_profile_status_for_write_candidate_without_extra_gate(tmp_path):
+    """F1 25 needed no writer_id/supported_values (no F1-specific write gate
+    exists in _check_write_rule), so its real profile's synthesized rule
+    should carry the generic supported_settings list and nothing else new."""
+    registry = VerificationRegistry("0.08.18", data_dir=tmp_path)
+
+    result = registry.status_for(
+        "F1® 25", "Steam", "1,0,141,2878",
+        "30ecff703320a613209099ee3014ad6dc70f6b51c83cf2a2fb86de822b7c45c7",
+    )
+
+    assert result["status"] == "write_candidate"
+    assert result["reason"] == "verified"
+    rule = result["rule"]
+    assert rule.get("writer_id") is None
+    assert rule.get("supported_values") == {}
+    assert "quick_preset" in rule["supported_settings"]
+
+    # The legacy rule file's plain-ASCII "F1 25" name is a different exact
+    # match target than the profile's "F1® 25" (Profile.matches() is exact,
+    # case-insensitive only) — confirm it simply doesn't resolve to this
+    # profile at all, regardless of whatever legacy/builtin fallback applies.
+    from config_manager import profile_dispatch
+
+    assert profile_dispatch.find_profile("F1® 25") is not None
+    assert profile_dispatch.find_profile("F1 25") is None

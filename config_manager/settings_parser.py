@@ -1429,6 +1429,24 @@ def extract_key_settings(
 
     name_lower = game_name.lower()
 
+    # P1: profile-first dispatch (GSAA_P1_handoff.md §4.2) — a migrated game's
+    # profile wins; everything below is the pre-P1 fallback for games that
+    # haven't been migrated yet.
+    from . import profile_dispatch
+    import os as _os
+
+    profile = profile_dispatch.find_profile(game_name)
+    if profile is not None and profile.parser_fn:
+        if profile.parse_mode == "multi_file":
+            # e.g. CS2: settings are split across cs2_video.txt and a
+            # separate convars file, so the parser needs every readable
+            # config, not just a single "main" file's content.
+            return profile.parse_multi(readable)
+        main_file = profile.files.get("main")
+        if main_file is not None:
+            main_name = _os.path.basename(main_file.path)
+            return profile.parse(_content_for(main_name))
+
     if "cyberpunk" in name_lower:
         return _parse_cyberpunk(_content_for("UserSettings.json"))
 

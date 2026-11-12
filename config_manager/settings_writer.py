@@ -15,6 +15,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import registry_io
+from .codecs import ini as codecs_ini
+from .codecs import valve_kv as codecs_valve_kv
+from .codecs import xml_attr as codecs_xml_attr
 from .safe_io import atomic_write_bytes, atomic_write_text
 from .settings_parser import (
     RESOLUTION,
@@ -56,11 +59,13 @@ def forza_auxiliary_paths(config_files: List[Dict[str, Any]]) -> List[str]:
 
 
 def _replace_ini_value(content: str, key: str, new_value: str) -> str:
-    """Replace the value of *key*=... in INI-style content."""
-    pattern = re.compile(rf"^(\s*{re.escape(key)}\s*=\s*)(.*)$", re.MULTILINE)
-    if pattern.search(content):
-        return pattern.sub(rf"\g<1>{new_value}", content)
-    return content
+    """Replace the value of *key*=... in INI-style content.
+
+    Thin re-export of the ``ini`` codec (``config_manager/codecs/ini.py``) —
+    kept here under its historical name so existing call sites and tests
+    don't need to change as part of the P1 profile migration.
+    """
+    return codecs_ini.patch(content, key, new_value)
 
 
 def _replace_black_myth_ui_value(content: str, key: str, new_value: str) -> str:
@@ -71,33 +76,21 @@ def _replace_black_myth_ui_value(content: str, key: str, new_value: str) -> str:
 
 
 def _replace_valve_kv_value(content: str, key: str, new_value: str) -> str:
-    """Replace a Valve KV ``"key" "value"`` entry."""
-    pattern = re.compile(
-        rf'^(\s*"{re.escape(key)}"\s+")([^"]*)(")$', re.MULTILINE
-    )
-    if pattern.search(content):
-        return pattern.sub(rf"\g<1>{new_value}\g<3>", content)
-    return content
+    """Replace a Valve KV ``"key" "value"`` entry. Re-export of the ``valve_kv`` codec."""
+    return codecs_valve_kv.patch(content, key, new_value)
 
 
 def _replace_xml_attr(content: str, tag: str, attr: str, new_value: str) -> str:
-    """Replace an XML attribute ``<tag attr="old">`` → ``<tag attr="new">``."""
-    pattern = re.compile(
-        rf'(<{re.escape(tag)}\b[^>]*\b{re.escape(attr)}=")([^"]*)(")',
-    )
-    if pattern.search(content):
-        return pattern.sub(rf"\g<1>{new_value}\g<3>", content)
-    return content
+    """Replace an XML attribute ``<tag attr="old">`` → ``<tag attr="new">``.
+
+    Re-export of the ``xml_attr`` codec.
+    """
+    return codecs_xml_attr.patch(content, (tag, attr), new_value)
 
 
 def _replace_xml_option(content: str, option_id: str, new_value: str) -> str:
-    """Replace ``<option id="..." value="old">`` → ``value="new"``."""
-    pattern = re.compile(
-        rf'(<option\s+id="{re.escape(option_id)}"\s+value=")([^"]*)(")',
-    )
-    if pattern.search(content):
-        return pattern.sub(rf"\g<1>{new_value}\g<3>", content)
-    return content
+    """Replace ``<option id="..." value="old">`` → ``value="new"``. Re-export of the ``xml_attr`` codec."""
+    return codecs_xml_attr.patch_option(content, option_id, new_value)
 
 
 # ── Cyberpunk 2077 Writer ────────────────────────────────────────────
@@ -1423,6 +1416,18 @@ def _detect_parser_type(game_name: str, config_files: List[Dict[str, Any]]) -> s
         # Read-only: SF6 has a dedicated parser but no writer; its INI is not
         # an Unreal GameUserSettings file.
         return "unknown"
+    if "clair obscur" in name_lower or "expedition 33" in name_lower:
+        # Read-only: Expedition 33's GameUserSettings.ini genuinely does
+        # contain ResolutionSizeX/FullscreenMode, so without this explicit
+        # guard it would fall through to the generic "unreal_ini" sniff below
+        # and _write_unreal_ini() would actually be invoked on it. That would
+        # be unsafe: _parse_expedition_33() reads quick_preset from the
+        # sg.*Quality keys, but _write_unreal_ini() only ever patches
+        # GPUConfigPreset for quick_preset writes - a pre-existing read/write
+        # field mismatch that was never exercised because nothing called this
+        # path for this title before. Treat it the same as SF6 until a real,
+        # verified writer for this format is built.
+        return "unknown"
 
     readable = [c for c in config_files if c.get("content") and c.get("found")]
 
@@ -1470,10 +1475,63 @@ def write_settings(
     if not to_write:
         return []
 
-    parser_type = _detect_parser_type(game_name, config_files)
     results: List[Dict[str, str]] = []
-
     readable = [c for c in config_files if c.get("content") and c.get("found")]
+
+    # P1: profile-first dispatch (GSAA_P1_handoff.md §4.2) — try a migrated
+    # game's profile.writer_fn before falling back to the legacy dispatch
+    # below. find_profile() does an exact (case-insensitive) title match so a
+    # profile can never accidentally hijack a different, not-yet-migrated
+    # variant (e.g. "... Benchmark Tool").
+    from . import profile_dispatch
+
+    profile = profile_dispatch.find_profile(game_name)
+    if profile is not None and profile.writer_fn:
+        main_file = profile.files.get("main")
+        if main_file is not None:
+            main_is_registry = main_file.codec == "registry"
+            main_name = Path(main_file.path).name.casefold()
+            for cfg in readable:
+                cfg_is_registry = cfg.get("type") == "registry"
+                if cfg_is_registry:
+                    # Registry-type config_files entries (see
+                    # config_exporter._read_registry_key) never carry an
+                    # "expanded_path" key — only type/registry_path/found/
+                    # content/error. Match against the profile's declared
+                    # registry path instead of a filesystem name, and only
+                    # when the profile's main file is itself registry-backed.
+                    if not main_is_registry:
+                        continue
+                    reg_path = cfg.get("registry_path") or ""
+                    if reg_path.replace("/", "\\").casefold() != str(main_file.path).replace("/", "\\").casefold():
+                        continue
+                    path = reg_path
+                else:
+                    expanded_path = cfg.get("expanded_path")
+                    if not expanded_path or Path(expanded_path).name.casefold() != main_name:
+                        continue
+                    path = expanded_path
+                try:
+                    new_content = profile.write(cfg["content"], to_write)
+                    if cfg_is_registry:
+                        # Route to the guarded registry writer (registry_io)
+                        # instead of _safe_write(), which is a plain filesystem
+                        # write and would corrupt/no-op on a registry path.
+                        changes = registry_io.diff_changes(cfg["content"], new_content)
+                        written = registry_io.write_changes(path, changes, registry_io.default_backend())
+                        detail = profile.write_detail or f"{profile.id} registry settings written ({len(written)} value(s))"
+                    else:
+                        _safe_write(path, new_content)
+                        detail = profile.write_detail or f"{profile.id} settings written"
+                    results.append({"path": path, "status": "ok", "detail": detail})
+                    results.extend(profile.write_side_effects(config_files, to_write))
+                except Exception as e:
+                    results.append({"path": path, "status": "error", "detail": str(e)})
+                return results
+            results.append({"path": "", "status": "skipped", "detail": f"No {main_name} found"})
+            return results
+
+    parser_type = _detect_parser_type(game_name, config_files)
 
     if parser_type == "cyberpunk":
         for cfg in readable:

@@ -1,0 +1,46 @@
+{
+  "id": "grand-theft-auto-v-enhanced",
+  "match": { "names": ["Grand Theft Auto V Enhanced"] },
+  "engine": "rage",
+  "files": {
+    "main": { "path": "settings.xml", "codec": "xml_attr" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "gta_enhanced_parse",
+  "parse_mode": "single_file",
+  "_parser_fn_note": "READ-ONLY migration, by design - this profile intentionally has NO writer_fn. parser_fn wraps settings_parser._parse_gta_enhanced_xml verbatim (config_manager/profile_functions.py) so extract_key_settings()'s profile-first branch (which only requires profile.parser_fn, see settings_parser.py ~line 1439) is a zero-behavior-change read migration. dynamic_resolution is never set by the legacy parser (GTA has no such field) so it is omitted from 'settings' entirely, unlike Forza/Cyberpunk which do expose it. WHY NO writer_fn: confirmed by direct code research that write_settings()'s pre-P1 'gta_enhanced_xml' branch is a deliberate dead end - it only ever appends {status:'skipped', detail:'GTA V Enhanced requires guarded Apply'} and never calls the real writer. The actual, fully-implemented, heavily-guarded write path is config_manager.verification.backup_and_write(), which for this one title bypasses its own 'write' callback parameter entirely (gta = 'grand theft auto v enhanced' in game.casefold(); result = _write_gta_enhanced_settings(config_files, settings) if gta else write(...)) and calls _write_gta_enhanced_settings/_write_gta_enhanced_xml directly, after extra GTA-only checks in _check_write_rule (exact rule.writer_id=='gta-enhanced-xml-writer', per-value supported_values allowlist, exact 'GTAV Enhanced/settings.xml' path) and an extra in-memory preflight_write dry run. gui/app.py, cli.py and external_api.py all call backup_and_write exclusively for Apply, never write_settings() directly, so settings_writer.write_settings() is never the real entry point for a GTA write in production. If this profile declared a writer_fn, write_settings()'s profile-first dispatch (settings_writer.py ~line 1477: 'if profile is not None and profile.writer_fn') would start actually writing settings.xml when write_settings() is called directly and bypass the legacy 'skipped' result - a real behavior change versus today, and (since the profile-first write branch can only report 'ok' or 'error', never 'skipped') an unrecoverable change to write_settings()'s own return contract for this title. No current test or call site invokes write_settings() directly for this game (verified via grep across tests/ and config_manager/ - the only caller passing it for GTA is backup_and_write, which never reaches it because gta is True), but introducing a working writer_fn here would quietly open an unguarded write path (no consent check, no anticheat review, no preflight, no rollback, no rule/allowlist gating) for any future direct caller - exactly the kind of regression this migration must not introduce. Leaving writer_fn unset keeps write_settings()'s GTA branch byte-for-byte identical to before this profile existed; the real guarded writer (_write_gta_enhanced_xml/_write_gta_enhanced_settings) and backup_and_write's gta special-case are completely untouched by this migration. Re-routing backup_and_write's guarded write through a profile writer_fn, if ever desired, is a materially bigger and riskier change to the most safety-critical, most heavily-tested code path in this codebase (tests/test_verification.py's ~10 GTA-specific guard/rollback/signature tests) and is explicitly out of scope here.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": [
+      "ScreenWidth",
+      "ScreenHeight",
+      "VSync",
+      "Windowed",
+      "FrameLimit",
+      "ResScalingType",
+      "PresetLevel"
+    ]
+  },
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "release-review/gta-upscaling-correction-rule-candidate.json and release-review/gta-three-controls-v1.2.24-rule.json already contain real write_candidate rules for Steam build 1.0.1158.16 (fingerprint, writer_id='gta-enhanced-xml-writer', per-value supported_values allowlist for vsync/frame_limit/frame_generation/resolution/screen_mode/upscaling/upscaling_mode/quick_preset), but those are config_manager/verification.py's own separate rule-file mechanism (consumed by _check_write_rule), independent of this profile's verified[] field - left empty here rather than duplicating/fabricating data this read-only profile doesn't own. validation-evidence/11 - Grand Theft Auto V Enhanced/COLLECT.txt exists but was not treated as completed per-setting evidence for this field.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "No Rockstar/Social Club or other anti-cheat vendor entry exists anywhere in config_manager/anticheat.py's detection tables for this title, and validation/workstation.json's entry for 'Grand Theft Auto V Enhanced' has no config_files populated and no anti-cheat field at all (only a detected Steam install path and an empty PCGamingWiki lookup) - not independently re-verified against a real install.",
+    "scope": []
+  },
+  "process_ignore": [],
+  "_process_ignore_note": "No GTA-specific process_ignore entries identified in the legacy code or existing tests; left empty rather than guessed."
+}

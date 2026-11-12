@@ -1,0 +1,40 @@
+{
+  "id": "horizon-zero-dawn-remastered",
+  "match": { "names": ["Horizon Zero Dawn™ Remastered"] },
+  "engine": "decima",
+  "files": {
+    "main": { "path": "HKEY_CURRENT_USER\\Software\\Guerrilla Games\\Horizon Zero Dawn Remastered\\", "codec": "registry" }
+  },
+  "settings": {
+    "resolution": { "file": "main" },
+    "screen_mode": { "file": "main" },
+    "vsync": { "file": "main" },
+    "frame_limit": { "file": "main" },
+    "dynamic_resolution": { "file": "main" },
+    "upscaling": { "file": "main" },
+    "upscaling_mode": { "file": "main" },
+    "frame_generation": { "file": "main" },
+    "quick_preset": { "file": "main" }
+  },
+  "parser_fn": "registry_parse",
+  "parse_mode": "multi_file",
+  "_parser_fn_note": "READ-ONLY migration, by design - this profile intentionally has NO writer_fn. parser_fn wraps settings_parser._parse_registry_json verbatim via a shared _registry_parse(config_files) helper in config_manager/profile_functions.py (also used by shadow-of-the-tomb-raider.json - _parse_registry_json's game_hint parameter is accepted but never branched on anywhere in its body, confirmed by direct reading, so one shared wrapper is correct for both titles). parse_mode is 'multi_file' (the CS2 mechanism, profiles/loader.py's Profile.parse_multi) rather than 'single_file' because this title's config_files list mixes a binary profile.dat entry (error: 'binary_file') with the one registry entry - the wrapper filters the full list for type=='registry' itself exactly like _cs2_parse does, instead of relying on extract_key_settings()'s filename-matching _content_for() helper, which has no registry-path-shaped candidate to match against at all. This game's install on this workstation reports the registry key as not found (validation/workstation.json: found=false, error='key_not_found'), so parsing currently yields _empty_result() until the title is actually run once to populate the key - this mirrors Shadow of the Tomb Raider's key normally existing only after first launch. There is a second, unrelated game entry 'Horizon Zero Dawn™ Complete Edition' (install path .../Horizon Zero Dawn, no 'Remastered') with an empty config_files list in workstation.json - it is NOT registry-based and is deliberately excluded from this profile's match list; Profile.matches() is an exact (case-insensitive) title match so the two can never collide. WHY NO writer_fn (the real finding of this migration round, distinct from GTA/SF6/Expedition33's per-game reasons): settings_writer.write_settings()'s profile-first write-dispatch block (~line 1489-1506) does 'for cfg in readable: if Path(cfg[\"expanded_path\"]).name.casefold() == main_name' - a direct bracket access, not .get(). config_manager/config_exporter.py's _read_registry_key() (the function that actually populates production config_files for registry entries, confirmed by direct reading) never sets an 'expanded_path' key at all - only type/registry_path/found/content/error. Declaring a writer_fn here would make that bracket access raise an unhandled KeyError the first time this profile's write path was ever exercised with real exported data, a regression this migration must not introduce. (By contrast, config_manager/registry_io.read_key_as_json() - used by the already-working, already-tested backup_and_write()/registry_io.write_changes() path exercised in tests/test_write_safety.py's S7 registry tests - DOES set expanded_path==registry_path, which is why those existing tests pass; the two code paths that produce a 'registry'-typed config dict are not shape-consistent with each other, and nothing in this codebase currently reconciles that.) Even with that KeyError fixed, write_settings() would then call _safe_write(path, new_content) - an ordinary filesystem write - on a registry path string, which cannot work; real registry-aware I/O only exists in config_manager/registry_io.py and is used by the OLD, UNMODIFIED legacy 'registry_json' write branch in write_settings() (and by verification.backup_and_write()), which this profile leaves completely untouched by omitting writer_fn - exactly the GTA-pattern guarantee. Building a real, safe registry writer_fn (fixing the KeyError, wiring registry_io into the profile-dispatch write branch, and adding a production-shaped - no expanded_path - test fixture, since tests/test_upscaling_split.py's existing registry fixtures always synthesize an expanded_path and so never exercise this gap) is explicitly scoped as a future follow-up, not part of this read-only round. A second, independent gap noticed but explicitly out of scope here: config_manager/verification.py's backup_and_write() has no restore-original-registry-value rollback path for registry-type entries (its filesystem backup loop only backs up entries where Path(expanded_path).is_file() is true, which no registry entry satisfies) - unlike GTA's explicit file-copy restoration. Flagged for a future session, not fixed now.",
+  "constraints": [],
+  "readback_aliases": {},
+  "fingerprint_scope": ["main"],
+  "required_keys": {
+    "main": []
+  },
+  "_required_keys_note": "Left empty rather than guessed: this title's registry key reports 'key_not_found' on the only workstation evidence available in this checkout, so no real key/value names have been observed yet to require.",
+  "version_policy": "exact",
+  "verified": [],
+  "_verified_note": "No local runner/rules verified-games rule file or .9 run evidence exists in this checkout for Horizon Zero Dawn™ Remastered, and the only workstation evidence shows the registry key not yet populated (game never launched on that machine) - left empty rather than fabricated.",
+  "anticheat": {
+    "detected": [],
+    "review": "n/a",
+    "basis": "No anti-cheat vendor entry for this title exists in config_manager/anticheat.py's detection tables, and it is a single-player title with no validation-evidence/ entry in this checkout - not independently re-verified against a real install.",
+    "scope": []
+  },
+  "process_ignore": [],
+  "_process_ignore_note": "No title-specific process_ignore entries identified in the legacy code or existing tests; left empty rather than guessed."
+}

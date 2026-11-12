@@ -136,6 +136,26 @@ Use the standalone [HTML architecture diagram](docs/game-tuner-architecture.html
 
 ---
 
+## 新增遊戲支援 / Adding a new game
+
+> 自 2026-11 起，新增一款遊戲改用宣告式 JSON profile，不再需要同時修改好幾個檔案裡的硬寫死 `if "game name" in name` 判斷式。
+> As of November 2026, a new game is added as a declarative JSON profile instead of editing several hardcoded `if "game name" in name` dispatch sites.
+
+1. 在 `config_manager/profiles/` 新增一個 `<game-id>.json`，宣告：名稱比對規則（`match.names`，精確比對，大小寫不敏感）、設定檔案配置（`files`，含路徑與 codec）、`parser_fn`/`writer_fn`（指向 `config_manager/function_registry.py` 裡已註冊的函式；若該遊戲需要跨檔案讀取可設 `parse_mode: "multi_file"`；若寫入時還需要連帶寫其他檔案可設 `write_side_effect_fn`）、`anticheat` 審查狀態、以及（選填）`verified[]` per-setting 信心等級。
+   Add a `<game-id>.json` under `config_manager/profiles/` declaring: an exact, case-insensitive name-matching rule (`match.names`), the config file layout (`files`, with path + codec), `parser_fn`/`writer_fn` (pointing at functions already registered in `config_manager/function_registry.py`; set `parse_mode: "multi_file"` if the game needs more than one file read together, and `write_side_effect_fn` if writing also needs a side-effect write to another file), the `anticheat` review status, and optionally per-setting `verified[]` confidence levels.
+2. `config_manager/profiles/loader.py` 會在載入時（以及測試時）驗證 schema——缺欄位、未知 codec、未註冊的函式名稱都會在載入階段直接噴錯，不會等到 production 才發現。
+   `config_manager/profiles/loader.py` validates the schema at load time (and in tests) — missing fields, unknown codecs, or unregistered function names fail fast at load time rather than in production.
+3. 如果這款遊戲目前沒有安全的寫入路徑（例如反作弊、或尚未驗證過的寫入邏輯），**不要**設定 `writer_fn`——只給 `parser_fn` 即可讓它維持唯讀，`write_settings()` 會對它回傳乾淨的 `skipped`/不處理，不會意外打開寫入路徑。設定新 profile 前，務必先讀過 `_detect_parser_type()`（`settings_writer.py`）和 `write_settings()` 實際的 dispatch 分支，確認這款遊戲過去是「真的唯讀」還是「沒有專屬分支、靠通用 fallback 誤判」——後者代表是個既有、未修的行為，要先攤出來決定怎麼處理，不能直接照搬舊假設。
+   If the game has no safe write path yet (e.g. anti-cheat, or write logic that hasn't been verified on real hardware), do **not** set `writer_fn` — a `parser_fn`-only profile keeps it read-only, and `write_settings()` reports a clean `skipped` rather than silently opening a write path. Before adding a profile, read `_detect_parser_type()` and the real dispatch branch in `write_settings()` to confirm whether the game was genuinely read-only by design, or just fell through to a generic fallback that happened not to crash — the latter is a pre-existing, unfixed behavior that needs a deliberate decision, not a copy-paste assumption.
+4. 新增對應的 parity 測試（`tests/test_profile_<game>.py`）：拿 profile dispatch 路徑（`extract_key_settings`/`write_settings`）跟直接呼叫底層 `parser_fn`/`writer_fn` 函式，餵同一份 fixture 內容比對結果完全相同——這是在守 dispatch 接線本身，不是重測底層解析邏輯。
+   Add a parity test (`tests/test_profile_<game>.py`) comparing the profile-dispatch path (`extract_key_settings`/`write_settings`) against the underlying `parser_fn`/`writer_fn` called directly, on identical fixture content — this guards the dispatch wiring itself, not the parsing logic (which should already have its own coverage).
+5. **名稱變體（例如沒有商標符號、簡寫、或不同世代的同系列遊戲）刻意不放進 profile 的 match list，除非已經有實機驗證證據**——這些變體會繼續由 legacy 的 `settings_parser.py`/`settings_writer.py` substring dispatch 處理，這是刻意保留的永久安全網，不是遺留的未完成項目。
+   Name variants (e.g. missing a trademark symbol, a shorthand, or a different game in the same series) are deliberately left out of a profile's match list unless there is real-machine verification evidence — they continue to be handled by the legacy substring dispatch in `settings_parser.py`/`settings_writer.py`, which is a deliberate, permanent fallback, not leftover unfinished work.
+6. 完整的「全新、完全未支援的遊戲」8 階段流程（立案 → wiki 探索 → parser 開發 → 真機讀取驗證 → writer 開發 → 真機寫入/持久化驗證 → rule 晉升 + PR → 整合/發布）請參考內部 onboarding 文件。
+   For the full 8-stage process for a brand-new, completely unsupported game (issue → wiki discovery → parser dev → live-read validation → writer dev → live-write/persistence validation → rule promotion + PR → integration/release), see the internal onboarding doc.
+
+---
+
 ## 系統需求 / Requirements
 
 - **Python:** 3.8 以上 / 3.8 or above
